@@ -1,0 +1,301 @@
+package mcts
+
+import (
+	"math"
+	"math/rand"
+	"runtime"
+	"time"
+)
+
+// Default node selection policy (upper confidence bound)
+func UCB1[T MoveLike](parent, root *NodeBase[T]) *NodeBase[T] {
+
+	// Is that's a terminal node, simply return itself, there is no children anyway
+	// and on the rollout we will exit early, since the position is terminated
+	if parent.Terminal() {
+		return parent
+	}
+
+	max := float64(-1)
+	index := 0
+	lnParentVisits := math.Log(float64(parent.Visits()))
+	var child *NodeBase[T]
+	var actualVisits, visits, vl int32
+	var wins Result
+
+	for i := 0; i < len(parent.Children); i++ {
+
+		// Get the variables
+		child = &parent.Children[i]
+		visits, vl = child.GetVvl()
+		actualVisits = visits - vl
+
+		// Pick the unvisited one
+		if actualVisits == 0 {
+			// Return pointer to the child
+			return child
+		}
+
+		wins = child.Outcomes()
+
+		// UCB 1 : wins/visits + C * sqrt(ln(parent_visits)/visits)
+		// ucb1 = epliotation + exploration
+		// Since we assume the game is zero-sum, we want to expand the tree's nodes
+		// that have best value according to the root
+		ucb1 := float64(wins)/float64(visits) +
+			ExplorationParam*math.Sqrt(lnParentVisits/float64(visits))
+
+		if ucb1 > max {
+			max = ucb1
+			index = i
+		}
+	}
+
+	return &parent.Children[index]
+}
+
+// Use when started multi-threaded search and want it to synchronize with this thread
+func (mcts *MCTS[T]) Synchronize() {
+	mcts.wg.Wait()
+}
+
+func (mcts *MCTS[T]) mergeResults() {
+	for _, other := range mcts.roots[1:] {
+		mergeResult(mcts.Root, other)
+	}
+	mcts.merged.Store(true)
+	mcts.roots = nil
+}
+
+// Helper function to merge results from other root nodes into the main root
+func mergeResult[T MoveLike](root *NodeBase[T], other *NodeBase[T]) {
+	if root == nil || other == nil {
+		return
+	}
+
+	// Merge the counters
+	root.visits.Add(other.Visits())
+	root.sumOutcomes.Add(other.sumOutcomes.Load())
+	root.virtualLoss.Add(other.VirtualLoss())
+
+	// Merge children
+	otherLen := len(other.Children)
+	rootLen := len(root.Children)
+
+	// We have a mismatch, try to find the child
+	if rootLen != otherLen {
+		// Mismatch in number of children, cannot merge
+		// because we don't know where to put the new child,
+		// This will happen on 'almost' leaf nodes, so skipping them
+		// is fine.
+		if rootLen == 0 && otherLen != 0 {
+			// If the root has no children, but the other has,
+			// we can copy them all
+			root.Children = make([]NodeBase[T], otherLen)
+			copy(root.Children, other.Children)
+		}
+		return
+	}
+
+	// Merge children
+	for i := 0; i < otherLen; i++ {
+		child := &other.Children[i]
+
+		// Assume children are ordered the same way
+		if child.NodeSignature == root.Children[i].NodeSignature {
+			mergeResult(&root.Children[i], child)
+		}
+
+		// Else, that's an implementation of 'GameOperations' issue
+		// ExpandNode() must be a pure function
+	}
+}
+
+// Run multi-treaded search, to wait for the result, call Synchronize
+func (mcts *MCTS[T]) SearchMultiThreaded(ops GameOperations[T]) {
+	mcts.setupSearch()
+	threads := max(1, mcts.Limiter.Limits().NThreads)
+	VirtualLoss = 2
+
+	// Create a slice of root nodes
+	mcts.roots = make([]*NodeBase[T], threads)
+	for i := 0; i < threads; i++ {
+		if i == 0 || mcts.multithreadPolicy == MultithreadTreeParallel {
+			// All threads will work on the same root node
+			mcts.roots[i] = mcts.Root
+		} else if mcts.multithreadPolicy == MultithreadRootParallel {
+			// Each thread (apart from the main one) will have it's own copy of the root node
+			mcts.roots[i] = mcts.Root.Clone()
+		}
+	}
+
+	for id := range threads {
+		mcts.wg.Add(1)
+
+		// Start the search in a separate goroutine
+		go mcts.Search(mcts.roots[id], ops.Clone(), id)
+	}
+
+	// Detach a goroutine to merge the results when done
+	if mcts.multithreadPolicy == MultithreadRootParallel && threads > 1 {
+		go func() {
+			mcts.wg.Wait()
+			mcts.mergeResults()
+		}()
+	}
+}
+
+// This function only sets the limits, resets the counters, and the stop flag
+// doesn't actually start the search
+func (mcts *MCTS[T]) setupSearch() {
+	// Setup
+	// mcts.timer.Movetime(mcts.Limiter.Limits.Movetime)
+	// mcts.timer.Reset()
+	mcts.Limiter.Reset()
+	mcts.nodes.Store(0)
+	mcts.cps.Store(0)
+	mcts.maxdepth.Store(0)
+	// mcts.stop.Store(false)
+}
+
+// Actual search function implementation, simply calls:
+//
+// 1. selection - to choose the most promising node
+//
+// 2. rollout - to simulate the user-defined game, and get the result of a playout
+//
+// 3. backpropagate - to increment counters up to the root
+//
+// Until runs out of the allocated time, nodes, or memory.
+// threadId must be unique, 0 meaning it's the main search threads with some privileges
+func (mcts *MCTS[T]) Search(root *NodeBase[T], ops GameOperations[T], threadId int) {
+	defer mcts.wg.Done()
+
+	threadRand := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadId)))
+
+	if root.Terminal() || len(root.Children) == 0 {
+		if threadId == 0 {
+			mcts.invokeListener(mcts.listener.onStop)
+		}
+		return
+	}
+
+	var node *NodeBase[T]
+
+	for mcts.Limiter.Ok(mcts.Nodes(), mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles())) {
+
+		// Choose the most promising node
+		node = mcts.Selection(root, ops, threadRand, threadId)
+		// Get the result of the rollout/playout
+		mcts.Backpropagate(ops, node, ops.Rollout())
+
+		// Store the cps
+		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
+		mcts.invokeListener(mcts.listener.onCycle)
+	}
+
+	// Evaluate the stop reason, only main thread will do this
+	if threadId == 0 {
+		mcts.Limiter.EvaluateStopReason(mcts.Nodes(), mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
+	}
+
+	// Synchronize all threads
+	mcts.Limiter.Stop()
+
+	// Make sure only 1 thread calls this
+	if threadId == 0 {
+		mcts.invokeListener(mcts.listener.onStop)
+	}
+}
+
+// Selects next child to expand, by user-defined selection policy
+func (mcts *MCTS[T]) Selection(root *NodeBase[T], ops GameOperations[T], threadRand *rand.Rand, threadId int) *NodeBase[T] {
+
+	node := root
+	depth := 0
+	for node.Expanded() {
+		node = mcts.selection_policy(node, root)
+		ops.Traverse(node.NodeSignature)
+		depth++
+		mcts.nodes.Add(1)
+
+		// Apply virtual loss
+		node.AddVvl(VirtualLoss, VirtualLoss)
+	}
+
+	// Add new children to this node, after finding leaf node
+	if node.RealVisits() > 0 && !node.Terminal() {
+		// Expand the node, only if needed (expand flag is 0)
+		if mcts.Limiter.Expand() && node.CanExpand() {
+			mcts.size.Add(ops.ExpandNode(node))
+			// Now update it's state
+			node.FinishExpanding()
+		}
+
+		// Currently expanding
+		first := true
+		for node.Expanding() {
+			if first {
+				// If this is the first time, increment the collision counter
+				mcts.collisionCount.Add(1)
+				first = false
+			}
+			runtime.Gosched()
+		}
+
+		// Already set
+		if node.Expanded() {
+			// Select child at random
+			node = &node.Children[threadRand.Int31n(int32(len(node.Children)))]
+			// Traverse to this child
+			ops.Traverse(node.NodeSignature)
+			depth++
+			mcts.nodes.Add(1)
+			// Apply again virtual loss
+			node.AddVvl(VirtualLoss, VirtualLoss)
+		}
+	}
+
+	// Set the 'max depth'
+	if threadId == 0 && depth >= 2 && depth > int(mcts.maxdepth.Load()) {
+		// Fix: Allow only 1 thread (main) to change the 'maxdepth'
+		mcts.maxdepth.Store(int32(depth))
+		mcts.invokeListener(mcts.listener.onDepth)
+	}
+
+	// return the candidate
+	return node
+}
+
+// Increment the counters (wins/visits) along the tree path
+func (mcts *MCTS[T]) Backpropagate(ops GameOperations[T], node *NodeBase[T], result Result) {
+	/*
+		source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
+			If white loses the simulation, all nodes along the selection incremented their simulation count (the denominator),
+			but among them only the black nodes were credited with wins (the numerator). If instead white wins,
+			all nodes along the selection would still increment their simulation count, but among them
+			only the white nodes would be credited with wins. In games where draws are possible,
+			a draw causes the numerator for both black and white to be incremented by 0.5 and the denominator by 1.
+			This ensures that during selection, each player's choices expand towards the most promising moves for that player,
+			which mirrors the goal of each player to maximize the value of their move.
+	*/
+
+	for node != nil {
+
+		// Reverse virtual loss for non-root
+		if node.Parent != nil {
+			node.AddVvl(1-VirtualLoss, -VirtualLoss)
+		} else {
+			node.AddVvl(1, 0)
+		}
+
+		result = 1.0 - result // switch the result
+		// Add the outcome
+		node.AddOutcome(result)
+
+		// Backpropagate
+		node = node.Parent
+		ops.BackTraverse()
+		mcts.nodes.Add(1)
+	}
+}
