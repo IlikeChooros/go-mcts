@@ -18,6 +18,36 @@ const (
 	StopCycles               = 32 // Cycle limit reached
 )
 
+func (sr StopReason) String() string {
+	if sr == StopNone {
+		return "None"
+	}
+
+	reasons := []struct {
+		flag StopReason
+		name string
+	}{
+		{StopInterrupt, "Interrupt"},
+		{StopMovetime, "Movetime"},
+		{StopNodes, "Nodes"},
+		{StopMemory, "Memory"},
+		{StopDepth, "Depth"},
+		{StopCycles, "Cycles"},
+	}
+
+	var result string
+	for _, r := range reasons {
+		if sr&r.flag == r.flag {
+			if result != "" {
+				result += "|"
+			}
+			result += r.name
+		}
+	}
+
+	return result
+}
+
 const (
 	stopMask   = 1
 	timeMask   = 2

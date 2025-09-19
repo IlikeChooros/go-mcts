@@ -149,6 +149,10 @@ func (mcts *MCTS[T]) StatsListener() *StatsListener[T] {
 	return mcts.listener
 }
 
+func (mcts *MCTS[T]) SetListener(listener StatsListener[T]) {
+	*mcts.listener = listener
+}
+
 func (mcts *MCTS[T]) IsThinking() bool {
 	return !mcts.Limiter.Stop()
 }
@@ -224,6 +228,10 @@ func (mcts *MCTS[T]) Count() int {
 func (mcts *MCTS[T]) Size() uint32 {
 	// Count every node in the tree
 	return mcts.size.Load()
+}
+
+func (mcts *MCTS[T]) MemoryUsage() uint32 {
+	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T]{})) + uint32(unsafe.Sizeof(MCTS[T]{}))
 }
 
 // Remove previous tree & update game ops state

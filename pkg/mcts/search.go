@@ -191,7 +191,8 @@ func (mcts *MCTS[T]) Search(root *NodeBase[T], ops GameOperations[T], threadId i
 
 		// Store the cps
 		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
-		mcts.invokeListener(mcts.listener.onCycle)
+		// Invoke the 'onCycle' listener
+		mcts.listener.invokeCycle(mcts)
 	}
 
 	// Evaluate the stop reason, only main thread will do this

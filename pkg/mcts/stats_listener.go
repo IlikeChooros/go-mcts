@@ -49,11 +49,16 @@ type StatsListener[T MoveLike] struct {
 	// called when 'max depth' increases, receives new max depth
 	onDepth ListenerFunc[T]
 
-	// called every one full iteration, receives total number of cycles
+	// called every N full iterations, receives total number of cycles
 	onCycle ListenerFunc[T]
+	nCycles int // call 'onCycle' every N cycles
 
 	// called when the search stops (either by limiter or 'stop' signal)
 	onStop ListenerFunc[T]
+}
+
+func NewStatsListener[T MoveLike]() StatsListener[T] {
+	return StatsListener[T]{nCycles: 1}
 }
 
 // Attach new on max depth change callback, will be called only be the main search thread,
@@ -67,6 +72,20 @@ func (listener *StatsListener[T]) OnDepth(onDepth ListenerFunc[T]) *StatsListene
 // because of pv evaluation, so use it only for debugging
 func (listener *StatsListener[T]) OnCycle(onCycle ListenerFunc[T]) *StatsListener[T] {
 	listener.onCycle = onCycle
+	return listener
+}
+
+func (listener *StatsListener[T]) invokeCycle(tree *MCTS[T]) {
+	if listener.onCycle != nil && tree.Root.Visits()%int32(listener.nCycles) == 0 {
+		listener.onCycle(toListenerStats(tree))
+	}
+}
+
+func (listener *StatsListener[T]) SetCycleInterval(n int) *StatsListener[T] {
+	if n < 1 {
+		n = 1
+	}
+	listener.nCycles = n
 	return listener
 }
 

@@ -1,0 +1,14 @@
+{
+    "go.toolsEnvVars": {
+        "CGO_ENABLED": "1",
+        "CC": "gcc",
+        "CXX": "g++"
+    },
+    "gopls": {
+        "build.env": {
+            "CGO_ENABLED": "1",
+            "CC": "gcc",
+            "CXX": "g++"
+        }
+    }
+}
