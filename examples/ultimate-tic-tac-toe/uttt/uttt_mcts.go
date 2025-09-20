@@ -13,6 +13,7 @@ import (
 	"go-mcts/pkg/mcts"
 	"math/rand"
 	"time"
+	"unsafe"
 )
 
 // Actual UTTT mcts implementation
@@ -82,55 +83,17 @@ func (mcts *UtttMCTS) SetNotation(notation string) error {
 	return mcts.ops.position.FromNotation(notation)
 }
 
-func ToSearchResult(stats mcts.ListenerTreeStats[PosType], turn TurnType) SearchResult {
+func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
 
+	multipv := tree.MultiPv(pvPolicy)
 	result := SearchResult{
-		Nodes:  0,
-		Cps:    stats.Cps,
-		Depth:  stats.Maxdepth,
-		Cycles: int32(stats.Cycles),
-		Lines:  make([]EngineLine, len(stats.Lines)),
-		Turn:   turn,
-	}
-
-	for i := range len(stats.Lines) {
-		treeLine := &stats.Lines[i]
-		line := &result.Lines[i]
-		line.Pv = treeLine.Moves
-
-		// Set the score
-		if treeLine.Terminal {
-			if treeLine.Draw {
-				line.ScoreType = ValueScore
-				line.Value = 50
-			} else {
-				line.ScoreType = MateScore
-				line.Value = len(treeLine.Moves)
-
-				// If the game ends on our turn, we are losing
-				if line.Value%2 == 0 {
-					line.Value = -line.Value
-				}
-			}
-		} else {
-			line.ScoreType = ValueScore
-			line.Value = int(100 * treeLine.Eval)
-		}
-	}
-
-	return result
-}
-
-func (mcts *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
-
-	multipv := mcts.MultiPv(pvPolicy)
-	result := SearchResult{
-		Nodes:  uint64(mcts.Nodes()),
-		Cps:    mcts.Cps(),
-		Depth:  mcts.MaxDepth(),
-		Cycles: mcts.Root.Visits(),
+		Cps:    tree.Cps(),
+		Depth:  tree.MaxDepth(),
+		Cycles: tree.Root.Visits(),
 		Lines:  make([]EngineLine, len(multipv)),
-		Turn:   mcts.ops.rootSide,
+		Turn:   tree.ops.rootSide,
+		Size:   tree.Size(),
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[PosType]{})) * uint64(tree.Size()),
 	}
 
 	for i := range len(multipv) {

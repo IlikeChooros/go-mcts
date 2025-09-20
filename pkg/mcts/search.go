@@ -56,13 +56,30 @@ func UCB1[T MoveLike](parent, root *NodeBase[T]) *NodeBase[T] {
 
 // Use when started multi-threaded search and want it to synchronize with this thread
 func (mcts *MCTS[T]) Synchronize() {
-	mcts.wg.Wait()
+	if mcts.shouldMerge() {
+		// Wait for the merge to finish
+		for !mcts.merged.Load() {
+			runtime.Gosched()
+		}
+	} else {
+		// Just wait for all threads to finish
+		mcts.wg.Wait()
+	}
 }
 
 func (mcts *MCTS[T]) mergeResults() {
+	// fmt.Printf("Merging results from %d threads...\n", len(mcts.roots))
+	// fmt.Println("Before merge: ", mcts.Count(), " count, ",
+	// mcts.Cps(), " cps, ", mcts.Cycles(), " cycles, depth ", mcts.MaxDepth(),
+	// )
 	for _, other := range mcts.roots[1:] {
+		// fmt.Printf("Merging root with %d nodes and %d visits\n", countTreeNodes(other), other.Visits())
 		mergeResult(mcts.Root, other)
 	}
+	// fmt.Println("After merge: ", mcts.Count(), " count, ",
+	// 	mcts.Cps(), " cps, ", mcts.Cycles(), " cycles, depth ", mcts.MaxDepth(),
+	// )
+	// Free the roots
 	mcts.merged.Store(true)
 	mcts.roots = nil
 }
@@ -104,10 +121,13 @@ func mergeResult[T MoveLike](root *NodeBase[T], other *NodeBase[T]) {
 		// Assume children are ordered the same way
 		if child.NodeSignature == root.Children[i].NodeSignature {
 			mergeResult(&root.Children[i], child)
+		} else {
+			panic("[MCTS] mergeResult: child signature mismatch, make sure GameOperations.ExpandNode returns children ALWAYS in the same order")
 		}
 
 		// Else, that's an implementation of 'GameOperations' issue
 		// ExpandNode() must be a pure function
+
 	}
 }
 
@@ -135,14 +155,10 @@ func (mcts *MCTS[T]) SearchMultiThreaded(ops GameOperations[T]) {
 		// Start the search in a separate goroutine
 		go mcts.Search(mcts.roots[id], ops.Clone(), id)
 	}
+}
 
-	// Detach a goroutine to merge the results when done
-	if mcts.multithreadPolicy == MultithreadRootParallel && threads > 1 {
-		go func() {
-			mcts.wg.Wait()
-			mcts.mergeResults()
-		}()
-	}
+func (mcts *MCTS[T]) shouldMerge() bool {
+	return mcts.multithreadPolicy == MultithreadRootParallel && mcts.Limiter.Limits().NThreads > 1
 }
 
 // This function only sets the limits, resets the counters, and the stop flag
@@ -152,9 +168,9 @@ func (mcts *MCTS[T]) setupSearch() {
 	// mcts.timer.Movetime(mcts.Limiter.Limits.Movetime)
 	// mcts.timer.Reset()
 	mcts.Limiter.Reset()
-	mcts.nodes.Store(0)
 	mcts.cps.Store(0)
 	mcts.maxdepth.Store(0)
+	mcts.merged.Store(false)
 	// mcts.stop.Store(false)
 }
 
@@ -169,35 +185,37 @@ func (mcts *MCTS[T]) setupSearch() {
 // Until runs out of the allocated time, nodes, or memory.
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
 func (mcts *MCTS[T]) Search(root *NodeBase[T], ops GameOperations[T], threadId int) {
-	defer mcts.wg.Done()
-
 	threadRand := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadId)))
 
 	if root.Terminal() || len(root.Children) == 0 {
 		if threadId == 0 {
 			mcts.invokeListener(mcts.listener.onStop)
 		}
+		mcts.wg.Done()
 		return
 	}
 
 	var node *NodeBase[T]
 
-	for mcts.Limiter.Ok(mcts.Nodes(), mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles())) {
+	for mcts.Limiter.Ok(mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles())) {
 
 		// Choose the most promising node
 		node = mcts.Selection(root, ops, threadRand, threadId)
 		// Get the result of the rollout/playout
 		mcts.Backpropagate(ops, node, ops.Rollout())
 
-		// Store the cps
+		// Increment cycle count and store the cps
+		mcts.cycles.Add(1)
 		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
 		// Invoke the 'onCycle' listener
-		mcts.listener.invokeCycle(mcts)
+		if threadId == 0 {
+			mcts.listener.invokeCycle(mcts)
+		}
 	}
 
 	// Evaluate the stop reason, only main thread will do this
 	if threadId == 0 {
-		mcts.Limiter.EvaluateStopReason(mcts.Nodes(), mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
+		mcts.Limiter.EvaluateStopReason(mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
 	}
 
 	// Synchronize all threads
@@ -206,6 +224,16 @@ func (mcts *MCTS[T]) Search(root *NodeBase[T], ops GameOperations[T], threadId i
 	// Make sure only 1 thread calls this
 	if threadId == 0 {
 		mcts.invokeListener(mcts.listener.onStop)
+		mcts.wg.Done()
+
+		// Wait for other threads to finish
+		mcts.wg.Wait()
+		// If we are in 'root parallel' mode, merge the results
+		if mcts.shouldMerge() {
+			mcts.mergeResults()
+		}
+	} else {
+		mcts.wg.Done()
 	}
 }
 
@@ -218,7 +246,6 @@ func (mcts *MCTS[T]) Selection(root *NodeBase[T], ops GameOperations[T], threadR
 		node = mcts.selection_policy(node, root)
 		ops.Traverse(node.NodeSignature)
 		depth++
-		mcts.nodes.Add(1)
 
 		// Apply virtual loss
 		node.AddVvl(VirtualLoss, VirtualLoss)
@@ -251,7 +278,6 @@ func (mcts *MCTS[T]) Selection(root *NodeBase[T], ops GameOperations[T], threadR
 			// Traverse to this child
 			ops.Traverse(node.NodeSignature)
 			depth++
-			mcts.nodes.Add(1)
 			// Apply again virtual loss
 			node.AddVvl(VirtualLoss, VirtualLoss)
 		}
@@ -297,6 +323,5 @@ func (mcts *MCTS[T]) Backpropagate(ops GameOperations[T], node *NodeBase[T], res
 		// Backpropagate
 		node = node.Parent
 		ops.BackTraverse()
-		mcts.nodes.Add(1)
 	}
 }

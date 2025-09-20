@@ -73,12 +73,12 @@ type LimiterLike interface {
 	// Wheter the tree can grow
 	Expand() bool
 	// Wheter the search should stop, called in the main search loop
-	Ok(nodes, size, depth, cycles uint32) bool
+	Ok(size, depth, cycles uint32) bool
 	// Get the reason why the search was stopped, valid after search ends
 	StopReason() StopReason
 	// Evaluate stop reason based on current state, and set it internally,
 	// this will be called once (by main thread) after search ends, before synchronizing other unfinished threads
-	EvaluateStopReason(nodes, size, depth, cycles uint32)
+	EvaluateStopReason(size, depth, cycles uint32)
 }
 
 type Limiter struct {
@@ -119,14 +119,13 @@ func (l *Limiter) Reset() {
 
 	// Pre-calculate 'are set' limit mask, see 'Ok' method for more explanation
 	l.areSetMask = toMask(l.Timer.IsSet(), 1) |
-		toMask(l.limits.Nodes != DefaultNodeLimit, 2) |
 		toMask(l.limits.ByteSize != DefaultByteSizeLimit, 3) |
 		toMask(l.limits.Depth != DefaultDepthLimit, 4) |
 		toMask(l.limits.Cycles != DefaultCyclesLimit, 5)
 }
 
-func (l *Limiter) EvaluateStopReason(nodes, size, depth, cycles uint32) {
-	okMask := l.OkMask(nodes, size, depth, cycles)
+func (l *Limiter) EvaluateStopReason(size, depth, cycles uint32) {
+	okMask := l.OkMask(size, depth, cycles)
 	reason := StopNone
 
 	if okMask&stopMask == stopMask {
@@ -188,7 +187,7 @@ func toMask(val bool, offset int) int {
 	return int(*(*byte)(unsafe.Pointer(&val))) << offset
 }
 
-func (l *Limiter) LimitMask(nodes, size, depth, cycles uint32) int {
+func (l *Limiter) LimitMask(size, depth, cycles uint32) int {
 	if l.limits.Infinite {
 		return toMask(l.stop.Load(), 0)
 	}
@@ -197,7 +196,7 @@ func (l *Limiter) LimitMask(nodes, size, depth, cycles uint32) int {
 
 	limitMask |= toMask(l.stop.Load(), 0)
 	limitMask |= toMask(l.Timer.IsEnd(), 1)
-	limitMask |= toMask(l.limits.Nodes <= nodes, 2)
+	// limitMask |= toMask(l.limits.Nodes <= nodes, 2)
 	limitMask |= toMask(l.maxSize <= size, 3)
 	limitMask |= toMask(l.limits.Depth <= int(depth), 4)
 	limitMask |= toMask(l.limits.Cycles <= cycles, 5)
@@ -205,8 +204,8 @@ func (l *Limiter) LimitMask(nodes, size, depth, cycles uint32) int {
 	return limitMask
 }
 
-func (l *Limiter) OkMask(nodes, size, depth, cycles uint32) int {
-	limitMask := l.LimitMask(nodes, size, depth, cycles)
+func (l *Limiter) OkMask(size, depth, cycles uint32) int {
+	limitMask := l.LimitMask(size, depth, cycles)
 
 	// Hierachy of stop signals
 	// 1. stop
@@ -228,6 +227,6 @@ func (l *Limiter) OkMask(nodes, size, depth, cycles uint32) int {
 	return limitMask
 }
 
-func (l *Limiter) Ok(nodes, size, depth, cycles uint32) bool {
-	return l.OkMask(nodes, size, depth, cycles) == 0
+func (l *Limiter) Ok(size, depth, cycles uint32) bool {
+	return l.OkMask(size, depth, cycles) == 0
 }

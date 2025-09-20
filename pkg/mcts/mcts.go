@@ -73,7 +73,7 @@ type TreeStats struct {
 	// size     atomic.Int32
 	maxdepth atomic.Int32
 	cps      atomic.Uint32
-	nodes    atomic.Uint32
+	cycles   atomic.Uint32
 }
 
 type MCTS[T MoveLike] struct {
@@ -126,18 +126,15 @@ func (mcts *MCTS[T]) invokeListener(f ListenerFunc[T]) {
 	}
 }
 
-// Get the collision count, which is the number of times
-// the node was chosen, but it was already being expanded
-// resulting in a 'waiting' state
+// The number of times a node was chosen, but it was already being expanded.
+// Resulting in a 'waiting' state of the search thread
 func (mcts *MCTS[T]) CollisionCount() int32 {
 	return mcts.collisionCount.Load()
 }
 
-// Number of all collisions in the tree divided by the number of all cycles
+// Number of all collisions in the tree divided by the number of all cycles,
+// for more info see CollisionCount
 func (mcts *MCTS[T]) CollisionFactor() float64 {
-	if mcts.Nodes() == 0 {
-		return 0.0
-	}
 	return float64(mcts.collisionCount.Load()) / float64(mcts.Root.Visits())
 }
 
@@ -166,23 +163,11 @@ func (mcts *MCTS[T]) MaxDepth() int {
 }
 
 func (mcts *MCTS[T]) Cycles() int {
-	if mcts.multithreadPolicy == MultithreadTreeParallel || mcts.merged.Load() {
-		return int(mcts.Root.Visits())
-	}
-	// In root parallel and not merged, sum all the root visits
-	cycles := 0
-	for i := range mcts.roots {
-		cycles += int(mcts.roots[i].Visits())
-	}
-	return cycles
+	return int(mcts.cycles.Load())
 }
 
 func (mcts *MCTS[T]) Cps() uint32 {
 	return mcts.cps.Load()
-}
-
-func (mcts *MCTS[T]) Nodes() uint32 {
-	return mcts.nodes.Load()
 }
 
 // Get the reason why the search was stopped, valid after search ends
@@ -199,8 +184,8 @@ func (mcts *MCTS[T]) Limits() *Limits {
 }
 
 func (mcts *MCTS[T]) String() string {
-	str := fmt.Sprintf("MCTS={Size=%d, Stats:{MaxDepth=%d, cps=%d, Nodes=%d}, Stop=%v",
-		mcts.Size(), mcts.MaxDepth(), mcts.Cps(), mcts.Nodes(), !mcts.IsThinking())
+	str := fmt.Sprintf("MCTS={Size=%d, Stats:{maxdepth=%d, cps=%d, cycles=%d}, Stop=%v",
+		mcts.Size(), mcts.MaxDepth(), mcts.Cps(), mcts.Cycles(), !mcts.IsThinking())
 	str += fmt.Sprintf(", Root=%v, Root.Children=%v", mcts.Root, mcts.Root.Children)
 	return str
 }

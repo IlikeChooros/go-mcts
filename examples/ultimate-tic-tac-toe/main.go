@@ -26,7 +26,7 @@ func main() {
 	tree := uttt.NewUtttMCTS(*uttt.NewPosition())
 
 	// Set search parameters
-	tree.SetLimits(mcts.DefaultLimits().SetMovetime(1000).SetThreads(4))
+	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(2))
 
 	// Run the search, will block until done
 	tree.Search()
@@ -35,4 +35,7 @@ func main() {
 	result := tree.SearchResult(mcts.BestChildWinRate)
 
 	fmt.Println("result: ", result.String())
+	fmt.Printf("Tree size: %d\n", tree.Size())
+	fmt.Printf("Memory used: %.2f MB\n", float32(tree.MemoryUsage())/1024.0/1024.0)
+	fmt.Printf("Collisions: %.2f%% (%d)\n", tree.CollisionFactor()*100.0, tree.CollisionCount())
 }

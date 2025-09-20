@@ -31,9 +31,7 @@ type NodeBase[T MoveLike] struct {
 	NodeSignature T
 	Children      []NodeBase[T]
 	Parent        *NodeBase[T]
-	// Synchornizes read/write on visits, virtual loss and outcomes
-	// nodeMutex sync.RWMutex
-	Flags uint32 // must be read/written atomically
+	Flags         uint32 // must be read/written atomically
 }
 
 func newRootNode[T MoveLike](terminated bool) *NodeBase[T] {

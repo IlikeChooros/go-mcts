@@ -13,6 +13,7 @@ type ListenerTreeStats[T MoveLike] struct {
 	Cycles     int
 	TimeMs     int
 	Cps        uint32
+	Size       uint32
 	Lines      []SearchLine[T]
 	StopReason StopReason
 }
@@ -37,6 +38,7 @@ func toListenerStats[T MoveLike](tree *MCTS[T]) ListenerTreeStats[T] {
 		Cycles:     int(tree.Root.Visits()),
 		TimeMs:     int(tree.Limiter.Elapsed()),
 		Cps:        tree.Cps(),
+		Size:       tree.Size(),
 		StopReason: tree.Limiter.StopReason(),
 	}
 }

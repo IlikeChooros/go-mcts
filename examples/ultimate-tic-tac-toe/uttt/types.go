@@ -2,6 +2,7 @@ package uttt
 
 import (
 	"fmt"
+	"go-mcts/pkg/mcts"
 	"math"
 	"unsafe"
 )
@@ -54,21 +55,22 @@ func (s EngineLine) StringValue(turn TurnType, absValue bool) string {
 // Struct holding information about the score value of the search
 type SearchResult struct {
 	Lines  []EngineLine
-	Nodes  uint64
 	Cps    uint32
 	Depth  int
 	Cycles int32
 	Turn   TurnType
+	Memory uint64
+	Size   uint32
 }
 
 func (s SearchResult) String() string {
 	if len(s.Lines) > 0 {
-		return fmt.Sprintf("eval %s depth %d cps %d nodes %d cycles %d pv %v",
-			s.Lines[0].StringValue(s.Turn, false), s.Depth, s.Cps, s.Nodes, s.Cycles, s.Lines[0].Pv)
+		return fmt.Sprintf("eval %s depth %d cps %d cycles %d size %d mem %.2f MB pv %v",
+			s.Lines[0].StringValue(s.Turn, false), s.Depth, s.Cps, s.Cycles, s.Size, float64(s.Memory)/1024/1024, s.Lines[0].Pv)
 	}
 
-	return fmt.Sprintf("eval NaN depth %d cps %d nodes %d cycles %d pv empty",
-		s.Depth, s.Cps, s.Nodes, s.Cycles)
+	return fmt.Sprintf("eval NaN depth %d cps %d cycles %d size %d mem %.2f MB pv empty",
+		s.Depth, s.Cps, s.Cycles, s.Size, float64(s.Memory)/1024/1024)
 }
 
 func (s SearchResult) MainLine() (EngineLine, bool) {
@@ -76,6 +78,46 @@ func (s SearchResult) MainLine() (EngineLine, bool) {
 		return s.Lines[0], true
 	}
 	return EngineLine{}, false
+}
+
+func ToSearchResult(stats mcts.ListenerTreeStats[PosType], turn TurnType) SearchResult {
+
+	result := SearchResult{
+		Cps:    stats.Cps,
+		Depth:  stats.Maxdepth,
+		Cycles: int32(stats.Cycles),
+		Lines:  make([]EngineLine, len(stats.Lines)),
+		Turn:   turn,
+		Size:   stats.Size,
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[PosType]{})) * uint64(stats.Size),
+	}
+
+	for i := range len(stats.Lines) {
+		treeLine := &stats.Lines[i]
+		line := &result.Lines[i]
+		line.Pv = treeLine.Moves
+
+		// Set the score
+		if treeLine.Terminal {
+			if treeLine.Draw {
+				line.ScoreType = ValueScore
+				line.Value = 50
+			} else {
+				line.ScoreType = MateScore
+				line.Value = len(treeLine.Moves)
+
+				// If the game ends on our turn, we are losing
+				if line.Value%2 == 0 {
+					line.Value = -line.Value
+				}
+			}
+		} else {
+			line.ScoreType = ValueScore
+			line.Value = int(100 * treeLine.Eval)
+		}
+	}
+
+	return result
 }
 
 // Fast bool to int conversion

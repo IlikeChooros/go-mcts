@@ -34,7 +34,6 @@ const (
 func DefaultLimits() *Limits {
 	return &Limits{
 		Depth:    DefaultDepthLimit,
-		Nodes:    DefaultNodeLimit,
 		Cycles:   DefaultCyclesLimit,
 		Movetime: DefaultMovetimeLimit,
 		Infinite: true,
@@ -47,13 +46,6 @@ func DefaultLimits() *Limits {
 // Set the maximum depth of the search
 func (l *Limits) SetDepth(depth int) *Limits {
 	l.Depth = depth
-	l.Infinite = false
-	return l
-}
-
-// Set the maxiumum number of nodes engine can go through
-func (l *Limits) SetNodes(nodes uint32) *Limits {
-	l.Nodes = nodes
 	l.Infinite = false
 	return l
 }
