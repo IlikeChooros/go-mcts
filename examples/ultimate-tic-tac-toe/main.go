@@ -15,7 +15,8 @@ Example below shows how to run a search and get the result.
 import (
 	"fmt"
 
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt"
+	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt"
+	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	mcts "go-mcts/pkg/mcts"
 )
 
@@ -23,7 +24,7 @@ func main() {
 	fmt.Println("Ultimate Tic Tac Toe MCTS Example")
 
 	// Create a new UTTT MCTS instance
-	tree := uttt.NewUtttMCTS(*uttt.NewPosition())
+	tree := basic_uttt_mcts.NewUtttMCTS(*uttt.NewPosition())
 
 	// Set search parameters
 	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(2))

@@ -1,4 +1,4 @@
-package uttt
+package basic_uttt_mcts
 
 /*
 
@@ -10,6 +10,7 @@ Ultimate Tic Tac Toe MCTS implementation
 */
 
 import (
+	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	"go-mcts/pkg/mcts"
 	"math/rand"
 	"time"
@@ -18,16 +19,16 @@ import (
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[PosType]
+	mcts.MCTS[uttt.PosType]
 	ops *UtttOperations
 }
 
-type UtttNode mcts.NodeBase[PosType]
+type UtttNode mcts.NodeBase[uttt.PosType]
 
-func NewUtttMCTS(position Position) *UtttMCTS {
+func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
 	uttt_ops := newUtttOps(position)
-	ops := mcts.GameOperations[PosType](uttt_ops)
+	ops := mcts.GameOperations[uttt.PosType](uttt_ops)
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,
@@ -55,16 +56,16 @@ func (mcts *UtttMCTS) Search() {
 }
 
 // Default selection used for debugging
-func (mcts *UtttMCTS) Selection() *mcts.NodeBase[PosType] {
+func (mcts *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType] {
 	return mcts.MCTS.Selection(mcts.Root, mcts.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 }
 
 // Default backprop used for debugging
-func (mcts *UtttMCTS) Backpropagate(node *mcts.NodeBase[PosType], result mcts.Result) {
+func (mcts *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType], result mcts.Result) {
 	mcts.MCTS.Backpropagate(mcts.ops, node, result)
 }
 
-func (mcts *UtttMCTS) Ops() mcts.GameOperations[PosType] {
+func (mcts *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType] {
 	return mcts.ops
 }
 
@@ -73,7 +74,7 @@ func (mcts *UtttMCTS) Reset() {
 }
 
 // Set the position
-func (mcts *UtttMCTS) SetPosition(position Position) {
+func (mcts *UtttMCTS) SetPosition(position uttt.Position) {
 	mcts.ops.position = position
 	mcts.Reset()
 }
@@ -83,17 +84,17 @@ func (mcts *UtttMCTS) SetNotation(notation string) error {
 	return mcts.ops.position.FromNotation(notation)
 }
 
-func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
+func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchResult {
 
 	multipv := tree.MultiPv(pvPolicy)
-	result := SearchResult{
+	result := uttt.SearchResult{
 		Cps:    tree.Cps(),
 		Depth:  tree.MaxDepth(),
 		Cycles: tree.Root.Visits(),
-		Lines:  make([]EngineLine, len(multipv)),
+		Lines:  make([]uttt.EngineLine, len(multipv)),
 		Turn:   tree.ops.rootSide,
 		Size:   tree.Size(),
-		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[PosType]{})) * uint64(tree.Size()),
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType]{})) * uint64(tree.Size()),
 	}
 
 	for i := range len(multipv) {
@@ -104,10 +105,10 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
 		// Set the score
 		if pvResult.Terminal {
 			if pvResult.Draw {
-				line.ScoreType = ValueScore
+				line.ScoreType = uttt.ValueScore
 				line.Value = 50
 			} else {
-				line.ScoreType = MateScore
+				line.ScoreType = uttt.MateScore
 				line.Value = len(pvResult.Pv)
 
 				// If the game ends on our turn, we are losing
@@ -116,7 +117,7 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
 				}
 			}
 		} else {
-			line.ScoreType = ValueScore
+			line.ScoreType = uttt.ValueScore
 			if pvResult.Root.Visits() == 0 {
 				line.Value = 50
 			} else {
@@ -128,12 +129,12 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) SearchResult {
 }
 
 type UtttOperations struct {
-	position Position
-	rootSide TurnType
+	position uttt.Position
+	rootSide uttt.TurnType
 	random   *rand.Rand
 }
 
-func newUtttOps(pos Position) *UtttOperations {
+func newUtttOps(pos uttt.Position) *UtttOperations {
 	return &UtttOperations{
 		position: pos,
 		rootSide: pos.Turn(),
@@ -145,10 +146,10 @@ func (ops *UtttOperations) Reset() {
 	ops.rootSide = ops.position.Turn()
 }
 
-func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[PosType]) uint32 {
+func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType]) uint32 {
 
 	moves := ops.position.GenerateMoves()
-	node.Children = make([]mcts.NodeBase[PosType], moves.size)
+	node.Children = make([]mcts.NodeBase[uttt.PosType], moves.Size)
 
 	for i, m := range moves.Slice() {
 		ops.position.MakeMove(m)
@@ -158,10 +159,10 @@ func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[PosType]) uint32 {
 		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal)
 	}
 
-	return uint32(moves.size)
+	return uint32(moves.Size)
 }
 
-func (ops *UtttOperations) Traverse(signature PosType) {
+func (ops *UtttOperations) Traverse(signature uttt.PosType) {
 	ops.position.MakeMove(signature)
 }
 
@@ -171,8 +172,8 @@ func (ops *UtttOperations) BackTraverse() {
 
 // Play the game until a terminal node is reached
 func (ops *UtttOperations) Rollout() mcts.Result {
-	var moves *MoveList
-	var move PosType
+	var moves *uttt.MoveList
+	var move uttt.PosType
 	var result mcts.Result = 0.5
 	var moveCount int = 0
 	leafTurn := ops.position.Turn()
@@ -182,16 +183,16 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 		moves = ops.position.GenerateMoves()
 
 		// Choose at random move
-		move = moves.moves[ops.random.Int31()%int32(moves.size)]
+		move = moves.Moves[ops.random.Int31()%int32(moves.Size)]
 		ops.position.MakeMove(move)
 	}
 
 	// If that's not a draw
-	if t := ops.position.termination; (t == TerminationCircleWon && leafTurn == CircleTurn) ||
-		(t == TerminationCrossWon && leafTurn == CrossTurn) {
+	if t := ops.position.Termination(); (t == uttt.TerminationCircleWon && leafTurn == uttt.CircleTurn) ||
+		(t == uttt.TerminationCrossWon && leafTurn == uttt.CrossTurn) {
 		result = 1.0
 		// We lost
-	} else if t != TerminationDraw {
+	} else if t != uttt.TerminationDraw {
 		result = 0.0
 	}
 
@@ -203,8 +204,8 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 	return result
 }
 
-func (ops UtttOperations) Clone() mcts.GameOperations[PosType] {
-	return mcts.GameOperations[PosType](&UtttOperations{
+func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType] {
+	return mcts.GameOperations[uttt.PosType](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
 		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),

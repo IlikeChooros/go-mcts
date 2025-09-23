@@ -16,7 +16,8 @@ and evaluation every time a new depth is reached or every 50000 cycles.
 
 import (
 	"fmt"
-	"go-mcts/examples/ultimate-tic-tac-toe/uttt"
+	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt"
+	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	"go-mcts/pkg/mcts"
 )
 
@@ -32,7 +33,7 @@ func main() {
 	// Create a new UTTT MCTS instance
 	position := uttt.NewPosition()
 	turn := position.Turn()
-	tree := uttt.NewUtttMCTS(*position)
+	tree := basic_uttt_mcts.NewUtttMCTS(*position)
 
 	// Set search parameters, try using different limits and see how it affects the search
 	// Also notice that MaxDepth != Pv depth, MaxDepth is only the maximum depth reached in the tree,

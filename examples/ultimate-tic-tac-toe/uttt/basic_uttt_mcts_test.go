@@ -1,8 +1,9 @@
-package uttt
+package basic_uttt_mcts
 
 import (
 	"context"
 	"fmt"
+	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	"go-mcts/pkg/mcts"
 	"math"
 	"math/rand"
@@ -12,8 +13,8 @@ import (
 )
 
 func TestMCTSBasicFunctionality(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,8 +36,8 @@ func TestMCTSBasicFunctionality(t *testing.T) {
 }
 
 func TestMCTSExpansion(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestMCTSExpansion(t *testing.T) {
 	ops := &UtttOperations{position: *pos}
 
 	// Create a root node
-	root := &mcts.NodeBase[PosType]{
+	root := &mcts.NodeBase[uttt.PosType]{
 		// Non-zero visits to trigger expansion
 		Flags: mcts.TerminalFlag(false),
 	}
@@ -57,7 +58,7 @@ func TestMCTSExpansion(t *testing.T) {
 		t.Error("Children should not be nil after expansion")
 	}
 
-	expectedMoves := pos.GenerateMoves().Size()
+	expectedMoves := int(pos.GenerateMoves().Size)
 	if len(root.Children) != expectedMoves {
 		t.Errorf("Expected %d children, got %d", expectedMoves, len(root.Children))
 	}
@@ -72,8 +73,8 @@ func TestMCTSExpansion(t *testing.T) {
 }
 
 func TestMCTSTraverseBackTraverse(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,11 +84,11 @@ func TestMCTSTraverseBackTraverse(t *testing.T) {
 
 	// Get a valid move
 	moves := pos.GenerateMoves()
-	if moves.Size() == 0 {
+	if moves.Size == 0 {
 		t.Fatal("No valid moves available")
 	}
 
-	move := moves.moves[0]
+	move := moves.Moves[0]
 
 	// Test traverse
 	ops.Traverse(move)
@@ -104,14 +105,14 @@ func TestMCTSTraverseBackTraverse(t *testing.T) {
 
 func TestMCTSRollout(t *testing.T) {
 	positions := []string{
-		StartingPosition,
+		uttt.StartingPosition,
 		"1x7/2o6/x8/9/9/9/9/9/9 o -",
 		"9/9/9/7x1/4xo3/8x/9/4o4/o8 x -",
 	}
 
 	for _, notation := range positions {
 		t.Run(fmt.Sprintf("Rollout-%s", strings.ReplaceAll(notation, "/", "|")), func(t *testing.T) {
-			pos := NewPosition()
+			pos := uttt.NewPosition()
 			err := pos.FromNotation(notation)
 			if err != nil {
 				t.Fatal(err)
@@ -137,8 +138,8 @@ func TestMCTSRollout(t *testing.T) {
 }
 
 func TestMCTSSelection(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,8 +161,8 @@ func TestMCTSSelection(t *testing.T) {
 }
 
 func TestMCTSBackpropagation(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +196,8 @@ func TestMCTSBackpropagation(t *testing.T) {
 }
 
 func TestMCTSSearch(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,8 +228,8 @@ func TestMCTSSearch(t *testing.T) {
 }
 
 func TestMCTSBestChild(t *testing.T) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,12 +260,12 @@ func TestMCTSBestChild(t *testing.T) {
 
 func TestMCTSUCB1Calculation(t *testing.T) {
 	// Create mock nodes to test UCB1
-	parent := &mcts.NodeBase[PosType]{
+	parent := &mcts.NodeBase[uttt.PosType]{
 		NodeStats: mcts.NodeStats{},
 	}
 	parent.SetVvl(100, 0)
 
-	children := []mcts.NodeBase[PosType]{
+	children := []mcts.NodeBase[uttt.PosType]{
 		{NodeStats: mcts.NodeStats{}, Parent: parent},
 		{NodeStats: mcts.NodeStats{}, Parent: parent},
 		{NodeStats: mcts.NodeStats{}, Parent: parent}, // Unvisited
@@ -312,7 +313,7 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 
 func TestMCTSTerminalNodes(t *testing.T) {
 	// Test near-terminal position
-	pos := NewPosition()
+	pos := uttt.NewPosition()
 	err := pos.FromNotation("xxx6/xxx6/xxx6/9/9/9/9/9/9 o -")
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +334,7 @@ func TestMCTSTerminalNodes(t *testing.T) {
 func TestMCTSMultiThreadedSearch(t *testing.T) {
 	// Test if multi threaded search returns proper search result
 
-	pos, err := FromNotation(StartingPosition)
+	pos, err := uttt.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +348,7 @@ func TestMCTSMultiThreadedSearch(t *testing.T) {
 	if len(result.Pv) == 0 {
 		t.Error("Pv shouldn't be empty after search")
 	}
-	if result.Bestmove == PosIllegal {
+	if result.Bestmove == uttt.PosIllegal {
 		t.Error("Bestmove is empty")
 	}
 	if result.Value == -1 {
@@ -360,7 +361,7 @@ func TestMCTSMultiThreadedSearch(t *testing.T) {
 func TestMCTSContextCancellation(t *testing.T) {
 	// Test if context cancellation stops the search
 
-	pos, err := FromNotation(StartingPosition)
+	pos, err := uttt.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,8 +399,8 @@ func TestMCTSContextCancellation(t *testing.T) {
 }
 
 func BenchmarkMCTSRollout(b *testing.B) {
-	pos := NewPosition()
-	err := pos.FromNotation(StartingPosition)
+	pos := uttt.NewPosition()
+	err := pos.FromNotation(uttt.StartingPosition)
 	if err != nil {
 		b.Fatal(err)
 	}

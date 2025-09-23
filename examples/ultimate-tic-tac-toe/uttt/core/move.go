@@ -8,8 +8,8 @@ const (
 )
 
 type MoveList struct {
-	moves [9 * 9]PosType
-	size  uint8
+	Moves [9 * 9]PosType
+	Size  uint8
 }
 
 // Make a new move list struct
@@ -19,8 +19,8 @@ func NewMoveList() *MoveList {
 
 func ToMoveList(moves []PosType) *MoveList {
 	mv := &MoveList{}
-	copy(mv.moves[:], moves)
-	mv.size = uint8(len(moves))
+	copy(mv.Moves[:], moves)
+	mv.Size = uint8(len(moves))
 	return mv
 }
 
@@ -31,32 +31,28 @@ func MakeMove(bigIndex, smallIndex int) PosType {
 
 // Reset the movelist, simply sets the size to 0
 func (ml *MoveList) Clear() {
-	ml.size = 0
+	ml.Size = 0
 }
 
 // Get the actual slice of valid moves
 func (ml *MoveList) Slice() []PosType {
-	return ml.moves[0:ml.size]
-}
-
-func (ml *MoveList) Size() int {
-	return int(ml.size)
+	return ml.Moves[0:ml.Size]
 }
 
 // Appends a new move to the list of moves
 func (ml *MoveList) Append(bigIndex, smallIndex int) {
 	// This is a critical function, don't use MakeMove here
-	ml.moves[ml.size] = PosType((smallIndex & _moveSmallIndexMask) | ((bigIndex << 4) & _moveBigIndexMask))
-	ml.size++
+	ml.Moves[ml.Size] = PosType((smallIndex & _moveSmallIndexMask) | ((bigIndex << 4) & _moveBigIndexMask))
+	ml.Size++
 }
 
 // Convert movelist into a string, uses move notation with space seperation
 func (ml *MoveList) String() string {
-	if ml.size == 0 {
+	if ml.Size == 0 {
 		return "empty"
 	}
 
-	strMoves := make([]string, ml.size)
+	strMoves := make([]string, ml.Size)
 	for i, m := range ml.Slice() {
 		strMoves[i] = m.String()
 	}
@@ -64,8 +60,8 @@ func (ml *MoveList) String() string {
 }
 
 func (ml *MoveList) AppendMove(move PosType) {
-	ml.moves[ml.size] = move
-	ml.size++
+	ml.Moves[ml.Size] = move
+	ml.Size++
 }
 
 // Get the big index of a move
