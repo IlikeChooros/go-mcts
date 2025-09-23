@@ -4,9 +4,6 @@ package basic_uttt_mcts
 
 Ultimate Tic Tac Toe MCTS implementation
 
-
-
-
 */
 
 import (
@@ -19,64 +16,64 @@ import (
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[uttt.PosType]
+	mcts.MCTS[uttt.PosType, *mcts.NodeStats]
 	ops *UtttOperations
 }
 
-type UtttNode mcts.NodeBase[uttt.PosType]
+type UtttNode mcts.NodeBase[uttt.PosType, *mcts.NodeStats]
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
 	uttt_ops := newUtttOps(position)
-	ops := mcts.GameOperations[uttt.PosType](uttt_ops)
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,
-			ops,
+			mcts.GameOperations[uttt.PosType, *mcts.NodeStats](uttt_ops),
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
+			&mcts.NodeStats{},
 		),
 		ops: uttt_ops,
 	}
 	return tree
 }
 
-func (mcts *UtttMCTS) AsyncSearch() {
-	mcts.MCTS.SearchMultiThreaded(mcts.ops)
+func (tree *UtttMCTS) AsyncSearch() {
+	tree.MCTS.SearchMultiThreaded(tree.ops)
 }
 
 // Start the search
-func (mcts *UtttMCTS) Search() {
+func (tree *UtttMCTS) Search() {
 
 	// Run the search
-	mcts.SearchMultiThreaded(mcts.ops)
+	tree.SearchMultiThreaded(tree.ops)
 
 	// Wait for the search to end
-	mcts.Synchronize()
+	tree.Synchronize()
 }
 
 // Default selection used for debugging
-func (mcts *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType] {
-	return mcts.MCTS.Selection(mcts.Root, mcts.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.NodeStats] {
+	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 }
 
 // Default backprop used for debugging
-func (mcts *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType], result mcts.Result) {
-	mcts.MCTS.Backpropagate(mcts.ops, node, result)
+func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats], result mcts.Result) {
+	tree.MCTS.Backpropagate(tree.ops, node, result)
 }
 
-func (mcts *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType] {
-	return mcts.ops
+func (tree *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType, *mcts.NodeStats] {
+	return tree.ops
 }
 
-func (mcts *UtttMCTS) Reset() {
-	mcts.MCTS.Reset(mcts.ops, mcts.ops.position.IsTerminated())
+func (tree *UtttMCTS) Reset() {
+	tree.MCTS.Reset(tree.ops, tree.ops.position.IsTerminated(), &mcts.NodeStats{})
 }
 
 // Set the position
-func (mcts *UtttMCTS) SetPosition(position uttt.Position) {
-	mcts.ops.position = position
-	mcts.Reset()
+func (tree *UtttMCTS) SetPosition(position uttt.Position) {
+	tree.ops.position = position
+	tree.Reset()
 }
 
 func (mcts *UtttMCTS) SetNotation(notation string) error {
@@ -90,11 +87,11 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 	result := uttt.SearchResult{
 		Cps:    tree.Cps(),
 		Depth:  tree.MaxDepth(),
-		Cycles: tree.Root.Visits(),
+		Cycles: tree.Root.Stats.Visits(),
 		Lines:  make([]uttt.EngineLine, len(multipv)),
 		Turn:   tree.ops.rootSide,
 		Size:   tree.Size(),
-		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType]{})) * uint64(tree.Size()),
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{})) * uint64(tree.Size()),
 	}
 
 	for i := range len(multipv) {
@@ -118,10 +115,10 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 			}
 		} else {
 			line.ScoreType = uttt.ValueScore
-			if pvResult.Root.Visits() == 0 {
+			if pvResult.Root.Stats.Visits() == 0 {
 				line.Value = 50
 			} else {
-				line.Value = int(100 * pvResult.Root.AvgOutcome())
+				line.Value = int(100 * pvResult.Root.Stats.AvgOutcome())
 			}
 		}
 	}
@@ -146,17 +143,17 @@ func (ops *UtttOperations) Reset() {
 	ops.rootSide = ops.position.Turn()
 }
 
-func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType]) uint32 {
+func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats]) uint32 {
 
 	moves := ops.position.GenerateMoves()
-	node.Children = make([]mcts.NodeBase[uttt.PosType], moves.Size)
+	node.Children = make([]mcts.NodeBase[uttt.PosType, *mcts.NodeStats], moves.Size)
 
 	for i, m := range moves.Slice() {
 		ops.position.MakeMove(m)
 		isTerminal := ops.position.IsTerminated()
 		ops.position.UndoMove()
 
-		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal)
+		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal, &mcts.NodeStats{})
 	}
 
 	return uint32(moves.Size)
@@ -204,8 +201,8 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 	return result
 }
 
-func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType] {
-	return mcts.GameOperations[uttt.PosType](&UtttOperations{
+func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.NodeStats] {
+	return mcts.GameOperations[uttt.PosType, *mcts.NodeStats](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
 		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),

@@ -89,7 +89,7 @@ func ToSearchResult(stats mcts.ListenerTreeStats[PosType], turn TurnType) Search
 		Lines:  make([]EngineLine, len(stats.Lines)),
 		Turn:   turn,
 		Size:   stats.Size,
-		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[PosType]{})) * uint64(stats.Size),
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[PosType, *mcts.NodeStats]{})) * uint64(stats.Size),
 	}
 
 	for i := range len(stats.Lines) {

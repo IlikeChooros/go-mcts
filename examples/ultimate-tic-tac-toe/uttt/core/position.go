@@ -159,7 +159,7 @@ func (p *Position) MakeLegalMove(move PosType) error {
 }
 
 // Make a move on the position, switches the sides, and puts current piece
-// on the position [bigIndex][smallIndex], accepts any move
+// on the position [bigIndex][smallIndex], acceptS NodeStatsLike move
 func (p *Position) MakeMove(move PosType) {
 	// UPDATE: Apparently we can't make a move inside a terminated position
 	bigIndex := move.BigIndex()

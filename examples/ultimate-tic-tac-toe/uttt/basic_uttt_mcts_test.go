@@ -26,8 +26,8 @@ func TestMCTSBasicFunctionality(t *testing.T) {
 		t.Error("Root node should not be nil")
 	}
 
-	if mcts.Root.Visits() != 0 {
-		t.Errorf("Initial visits should be 0, got %d", mcts.Root.Visits())
+	if mcts.Root.Stats.Visits() != 0 {
+		t.Errorf("Initial visits should be 0, got %d", mcts.Root.Stats.Visits())
 	}
 
 	if mcts.Root.Children == nil {
@@ -45,11 +45,11 @@ func TestMCTSExpansion(t *testing.T) {
 	ops := &UtttOperations{position: *pos}
 
 	// Create a root node
-	root := &mcts.NodeBase[uttt.PosType]{
+	root := &mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{
 		// Non-zero visits to trigger expansion
 		Flags: mcts.TerminalFlag(false),
 	}
-	root.SetVvl(0, 0)
+	root.Stats.SetVvl(0, 0)
 
 	// Test expansion
 	ops.ExpandNode(root)
@@ -170,24 +170,24 @@ func TestMCTSBackpropagation(t *testing.T) {
 	tree := NewUtttMCTS(*pos)
 
 	// Create a simple tree structure
-	tree.Root.SetVvl(1, 0)
+	tree.Root.Stats.SetVvl(1, 0)
 
 	child := &tree.Root.Children[0]
-	child.SetVvl(int32(mcts.VirtualLoss), int32(mcts.VirtualLoss))
+	child.Stats.SetVvl(int32(mcts.VirtualLoss), int32(mcts.VirtualLoss))
 
 	// Test backpropagation with win
 	originalNotation := pos.Notation()
 	tree.Backpropagate(child, 0)
 
 	// Check statistics
-	if child.Visits() != 1 {
-		t.Errorf("Child visits should be 1, got %d", child.Visits())
+	if child.Stats.Visits() != 1 {
+		t.Errorf("Child visits should be 1, got %d", child.Stats.Visits())
 	}
-	if int(child.Outcomes()) != 1 {
-		t.Errorf("Child wins should be 1, got %f", child.Outcomes())
+	if int(child.Stats.Outcomes()) != 1 {
+		t.Errorf("Child wins should be 1, got %f", child.Stats.Outcomes())
 	}
-	if tree.Root.Visits() != 2 { // Original 1 + 1 from backprop
-		t.Errorf("Root visits should be 2, got %d", tree.Root.Visits())
+	if tree.Root.Stats.Visits() != 2 { // Original 1 + 1 from backprop
+		t.Errorf("Root visits should be 2, got %d", tree.Root.Stats.Visits())
 	}
 	// Position should be restored
 	if pos.Notation() != originalNotation {
@@ -212,7 +212,7 @@ func TestMCTSSearch(t *testing.T) {
 	mcts.Search()
 
 	// Check that search actually ran
-	if mcts.Root.Visits() == 0 {
+	if mcts.Root.Stats.Visits() == 0 {
 		t.Error("Root should have been visited during search")
 	}
 
@@ -260,22 +260,22 @@ func TestMCTSBestChild(t *testing.T) {
 
 func TestMCTSUCB1Calculation(t *testing.T) {
 	// Create mock nodes to test UCB1
-	parent := &mcts.NodeBase[uttt.PosType]{
-		NodeStats: mcts.NodeStats{},
+	parent := &mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{
+		Stats: &mcts.NodeStats{},
 	}
-	parent.SetVvl(100, 0)
+	parent.Stats.SetVvl(100, 0)
 
-	children := []mcts.NodeBase[uttt.PosType]{
-		{NodeStats: mcts.NodeStats{}, Parent: parent},
-		{NodeStats: mcts.NodeStats{}, Parent: parent},
-		{NodeStats: mcts.NodeStats{}, Parent: parent}, // Unvisited
+	children := []mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{
+		{Stats: &mcts.NodeStats{}, Parent: parent},
+		{Stats: &mcts.NodeStats{}, Parent: parent},
+		{Stats: &mcts.NodeStats{}, Parent: parent}, // Unvisited
 	}
 
-	children[0].SetVvl(10, 0)
-	children[0].AddOutcome(7.0)
-	children[1].SetVvl(8, 0)
-	children[1].AddOutcome(3.0)
-	children[2].SetVvl(0, 0)
+	children[0].Stats.SetVvl(10, 0)
+	children[0].Stats.AddOutcome(7.0)
+	children[1].Stats.SetVvl(8, 0)
+	children[1].Stats.AddOutcome(3.0)
+	children[2].Stats.SetVvl(0, 0)
 
 	parent.Children = children
 
@@ -283,7 +283,7 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 	selected := mcts.UCB1(parent, parent)
 
 	// Should select unvisited node
-	if selected.Visits() != 0 {
+	if selected.Stats.Visits() != 0 {
 		t.Error("Should select unvisited node first, picked:", selected)
 	}
 
@@ -299,9 +299,9 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 	// Both nodes should have reasonable UCB1 values
 	for i := range parent.Children {
 		node := &parent.Children[i]
-		if node.Visits() > 0 {
-			winRate := float64(node.Outcomes()) / float64(node.Visits())
-			exploration := mcts.ExplorationParam * math.Sqrt(math.Log(float64(parent.Visits()))/float64(node.Visits()))
+		if node.Stats.Visits() > 0 {
+			winRate := float64(node.Stats.Outcomes()) / float64(node.Stats.Visits())
+			exploration := mcts.ExplorationParam * math.Sqrt(math.Log(float64(parent.Stats.Visits()))/float64(node.Stats.Visits()))
 			ucb1 := winRate + exploration
 
 			if math.IsNaN(ucb1) || math.IsInf(ucb1, 0) {

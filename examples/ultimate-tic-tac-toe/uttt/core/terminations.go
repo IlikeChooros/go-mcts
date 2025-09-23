@@ -57,7 +57,7 @@ func _isFilled[T comparable](arr []T, none T) bool {
 // Check if given 'small' square is terminated
 func _checkSquareTermination(crossbb, circlebb uint) PositionState {
 
-	// See if there is any winning patterns
+	// See if there iS NodeStatsLike winning patterns
 	for i := 0; i < 8; i++ {
 		if crossbb&_winningBitboardPatterns[i] == _winningBitboardPatterns[i] {
 			return PositionCrossWon

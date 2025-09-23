@@ -41,7 +41,7 @@ func main() {
 	tree.SetLimits(mcts.DefaultLimits().SetThreads(4).SetMbSize(32).SetDepth(8))
 
 	// Create a new listener, this shouldn't be a pointer, as it will be copied internally
-	listener := mcts.NewStatsListener[uttt.PosType]()
+	listener := mcts.NewStatsListener[uttt.PosType, *mcts.NodeStats]()
 
 	// Set the listener to print the current best move and evaluation on depth change
 	// OnDepth: will be called only by the main search thread, so no need for synchronization
