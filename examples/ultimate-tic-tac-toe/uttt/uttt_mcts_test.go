@@ -1,12 +1,14 @@
 package uttt
 
 import (
+	"context"
 	"fmt"
 	"go-mcts/pkg/mcts"
 	"math"
 	"math/rand"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMCTSBasicFunctionality(t *testing.T) {
@@ -353,6 +355,46 @@ func TestMCTSMultiThreadedSearch(t *testing.T) {
 	}
 
 	t.Log(result)
+}
+
+func TestMCTSContextCancellation(t *testing.T) {
+	// Test if context cancellation stops the search
+
+	pos, err := FromNotation(StartingPosition)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewUtttMCTS(*pos)
+	engine.Limits().SetThreads(2).SetMovetime(2000)
+
+	// Create a cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	engine.SetContext(ctx)
+
+	// Start search in a separate goroutine
+	done := make(chan struct{})
+	go func() {
+		engine.Search()
+		close(done)
+	}()
+
+	// Cancel the context after a short delay
+	time.Sleep(100 * time.Millisecond)
+	// engine.Stop()
+	cancel()
+
+	// Wait for search to finish
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Search did not stop after context cancellation")
+	}
+
+	// Check that search stopped due to cancellation
+	if engine.Limiter.StopReason()&mcts.StopInterrupt == 0 {
+		t.Error("Search should have been interrupted due to context cancellation")
+	}
 }
 
 func BenchmarkMCTSRollout(b *testing.B) {

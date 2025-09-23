@@ -1,6 +1,7 @@
 package mcts
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -106,7 +107,7 @@ func NewMTCS[T MoveLike](
 		multithreadPolicy: multithreadPolicy,
 	}
 
-	// Set IsThinking to false
+	// Set IsSearching to false
 	mcts.Limiter.Stop()
 
 	// Expand the root node, by default
@@ -150,10 +151,28 @@ func (mcts *MCTS[T]) SetListener(listener StatsListener[T]) {
 	*mcts.listener = listener
 }
 
-func (mcts *MCTS[T]) IsThinking() bool {
+// Adds custom context to the limiter, enabling cancellation through it
+//
+// Example:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//
+//	tree.SetContext(ctx)
+//	go func() {
+//	    time.Sleep(2 * time.Second)
+//	    cancel() // Cancel the search after 2 seconds
+//	}()
+//
+//	tree.Search()
+func (mcts *MCTS[T]) SetContext(ctx context.Context) {
+	mcts.Limiter.SetContext(ctx)
+}
+
+func (mcts *MCTS[T]) IsSearching() bool {
 	return !mcts.Limiter.Stop()
 }
 
+// Stop the search
 func (mcts *MCTS[T]) Stop() {
 	mcts.Limiter.SetStop(true)
 }
@@ -185,7 +204,7 @@ func (mcts *MCTS[T]) Limits() *Limits {
 
 func (mcts *MCTS[T]) String() string {
 	str := fmt.Sprintf("MCTS={Size=%d, Stats:{maxdepth=%d, cps=%d, cycles=%d}, Stop=%v",
-		mcts.Size(), mcts.MaxDepth(), mcts.Cps(), mcts.Cycles(), !mcts.IsThinking())
+		mcts.Size(), mcts.MaxDepth(), mcts.Cps(), mcts.Cycles(), !mcts.IsSearching())
 	str += fmt.Sprintf(", Root=%v, Root.Children=%v", mcts.Root, mcts.Root.Children)
 	return str
 }
@@ -222,7 +241,7 @@ func (mcts *MCTS[T]) MemoryUsage() uint32 {
 // Remove previous tree & update game ops state
 func (mcts *MCTS[T]) Reset(ops GameOperations[T], isTerminated bool) {
 	// Discard running search
-	if mcts.IsThinking() {
+	if mcts.IsSearching() {
 		mcts.Stop()
 		mcts.Synchronize()
 	}

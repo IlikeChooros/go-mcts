@@ -1,6 +1,7 @@
 package mcts
 
 import (
+	"context"
 	"math"
 	"sync/atomic"
 	"unsafe"
@@ -10,12 +11,11 @@ type StopReason int
 
 const (
 	StopNone      StopReason = iota
-	StopInterrupt            = 1  // Stopped by user, calling .SetStop(true)
+	StopInterrupt            = 1  // Stopped by user, by calling .SetStop(true) or context cancellation
 	StopMovetime             = 2  // Time limit reached
-	StopNodes                = 4  // Node limit reached
-	StopMemory               = 8  // Memory limit reached
-	StopDepth                = 16 // Depth limit reached
-	StopCycles               = 32 // Cycle limit reached
+	StopMemory               = 4  // Memory limit reached
+	StopDepth                = 8  // Depth limit reached
+	StopCycles               = 16 // Cycle limit reached
 )
 
 func (sr StopReason) String() string {
@@ -29,7 +29,6 @@ func (sr StopReason) String() string {
 	}{
 		{StopInterrupt, "Interrupt"},
 		{StopMovetime, "Movetime"},
-		{StopNodes, "Nodes"},
 		{StopMemory, "Memory"},
 		{StopDepth, "Depth"},
 		{StopCycles, "Cycles"},
@@ -49,15 +48,15 @@ func (sr StopReason) String() string {
 }
 
 const (
-	stopMask   = 1
-	timeMask   = 2
-	nodesMask  = 4
-	memoryMask = 8
-	depthMask  = 16
-	cyclesMask = 32
+	stopMask   int = StopInterrupt
+	timeMask   int = StopMovetime
+	memoryMask int = StopMemory
+	depthMask  int = StopDepth
+	cyclesMask int = StopCycles
 )
 
 type LimiterLike interface {
+	SetContext(ctx context.Context)
 	// Set the limits
 	SetLimits(*Limits)
 	// Get the limits
@@ -90,6 +89,7 @@ type Limiter struct {
 	stop       atomic.Bool
 	areSetMask int
 	reason     StopReason
+	ctx        context.Context
 }
 
 func NewLimiter(nodesize uint32) *Limiter {
@@ -97,6 +97,7 @@ func NewLimiter(nodesize uint32) *Limiter {
 		limits:   DefaultLimits(),
 		Timer:    _NewTimer(),
 		nodeSize: nodesize,
+		ctx:      context.Background(),
 	}
 
 	limiter.expand.Store(true)
@@ -119,9 +120,9 @@ func (l *Limiter) Reset() {
 
 	// Pre-calculate 'are set' limit mask, see 'Ok' method for more explanation
 	l.areSetMask = toMask(l.Timer.IsSet(), 1) |
-		toMask(l.limits.ByteSize != DefaultByteSizeLimit, 3) |
-		toMask(l.limits.Depth != DefaultDepthLimit, 4) |
-		toMask(l.limits.Cycles != DefaultCyclesLimit, 5)
+		toMask(l.limits.ByteSize != DefaultByteSizeLimit, 2) |
+		toMask(l.limits.Depth != DefaultDepthLimit, 3) |
+		toMask(l.limits.Cycles != DefaultCyclesLimit, 4)
 }
 
 func (l *Limiter) EvaluateStopReason(size, depth, cycles uint32) {
@@ -134,10 +135,6 @@ func (l *Limiter) EvaluateStopReason(size, depth, cycles uint32) {
 
 	if okMask&timeMask == timeMask {
 		reason |= StopMovetime
-	}
-
-	if okMask&nodesMask == nodesMask {
-		reason |= StopNodes
 	}
 
 	if okMask&memoryMask == memoryMask {
@@ -159,11 +156,20 @@ func (l *Limiter) StopReason() StopReason {
 	return l.reason
 }
 
+func (l *Limiter) SetContext(ctx context.Context) {
+	l.ctx = ctx
+}
+
 func (l *Limiter) SetStop(v bool) {
 	l.stop.Store(v)
 }
 
 func (l *Limiter) Stop() bool {
+	select {
+	case <-l.ctx.Done():
+		l.stop.Store(true)
+	default:
+	}
 	return l.stop.Load()
 }
 
@@ -188,18 +194,19 @@ func toMask(val bool, offset int) int {
 }
 
 func (l *Limiter) LimitMask(size, depth, cycles uint32) int {
+	stop := l.Stop()
+	// If infinite, always return 0 (no limits reached)
 	if l.limits.Infinite {
-		return toMask(l.stop.Load(), 0)
+		return toMask(stop, 0)
 	}
 
 	limitMask := 0
 
-	limitMask |= toMask(l.stop.Load(), 0)
+	limitMask |= toMask(stop, 0)
 	limitMask |= toMask(l.Timer.IsEnd(), 1)
-	// limitMask |= toMask(l.limits.Nodes <= nodes, 2)
-	limitMask |= toMask(l.maxSize <= size, 3)
-	limitMask |= toMask(l.limits.Depth <= int(depth), 4)
-	limitMask |= toMask(l.limits.Cycles <= cycles, 5)
+	limitMask |= toMask(l.maxSize <= size, 2)
+	limitMask |= toMask(l.limits.Depth <= int(depth), 3)
+	limitMask |= toMask(l.limits.Cycles <= cycles, 4)
 
 	return limitMask
 }
@@ -216,7 +223,7 @@ func (l *Limiter) OkMask(size, depth, cycles uint32) int {
 	// Check the combos:
 	// (time/nodes/cycles or any combination of them) AND memory limit ->
 	// if memory is exhausted, disable expanding of the tree and wait for the other limitation/s
-	if (l.areSetMask&memoryMask) == memoryMask && (l.areSetMask&(timeMask|nodesMask|cyclesMask)) != 0 {
+	if (l.areSetMask&memoryMask) == memoryMask && (l.areSetMask&(timeMask|cyclesMask)) != 0 {
 		// Memory exhausted
 		if limitMask&memoryMask == memoryMask {
 			l.expand.Store(false)
