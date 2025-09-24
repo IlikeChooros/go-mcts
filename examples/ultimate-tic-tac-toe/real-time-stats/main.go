@@ -16,8 +16,8 @@ and evaluation every time a new depth is reached or every 50000 cycles.
 
 import (
 	"fmt"
-	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt"
 	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
 	"go-mcts/pkg/mcts"
 )
 

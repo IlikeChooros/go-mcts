@@ -1,8 +1,8 @@
-package basic_uttt_mcts
+package rave_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS implementation
+Ultimate Tic Tac Toe MCTS implementation with UCB1 selection
 
 */
 
@@ -16,11 +16,11 @@ import (
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[uttt.PosType, *mcts.NodeStats, mcts.Result]
+	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]]
 	ops *UtttOperations
 }
 
-type UtttNode mcts.NodeBase[uttt.PosType, *mcts.NodeStats]
+type UtttNode mcts.NodeBase[uttt.PosType, *mcts.RaveStats]
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
@@ -28,11 +28,11 @@ func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,
-			mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](uttt_ops),
+			mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]](uttt_ops),
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
-			&mcts.NodeStats{},
-			mcts.DefaultBackprop[uttt.PosType, *mcts.NodeStats, mcts.Result]{},
+			&mcts.RaveStats{},
+			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]]{},
 		),
 		ops: uttt_ops,
 	}
@@ -54,21 +54,21 @@ func (tree *UtttMCTS) Search() {
 }
 
 // Default selection used for debugging
-func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.NodeStats] {
+func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.RaveStats] {
 	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 }
 
 // Default backprop used for debugging
-func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats], result mcts.Result) {
+func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *mcts.RaveDefaultGameResult[uttt.PosType]) {
 	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
 }
 
-func (tree *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
+func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]] {
 	return tree.ops
 }
 
 func (tree *UtttMCTS) Reset() {
-	tree.MCTS.Reset(tree.ops, tree.ops.position.IsTerminated(), &mcts.NodeStats{})
+	tree.MCTS.Reset(tree.ops, tree.ops.position.IsTerminated(), &mcts.RaveStats{})
 }
 
 // Set the position
@@ -92,7 +92,7 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 		Lines:  make([]uttt.EngineLine, len(multipv)),
 		Turn:   tree.ops.rootSide,
 		Size:   tree.Size(),
-		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{})) * uint64(tree.Size()),
+		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType, *mcts.RaveStats]{})) * uint64(tree.Size()),
 	}
 
 	for i := range len(multipv) {
@@ -144,17 +144,17 @@ func (ops *UtttOperations) Reset() {
 	ops.rootSide = ops.position.Turn()
 }
 
-func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats]) uint32 {
+func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats]) uint32 {
 
 	moves := ops.position.GenerateMoves()
-	node.Children = make([]mcts.NodeBase[uttt.PosType, *mcts.NodeStats], moves.Size)
+	node.Children = make([]mcts.NodeBase[uttt.PosType, *mcts.RaveStats], moves.Size)
 
 	for i, m := range moves.Slice() {
 		ops.position.MakeMove(m)
 		isTerminal := ops.position.IsTerminated()
 		ops.position.UndoMove()
 
-		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal, &mcts.NodeStats{})
+		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal, &mcts.RaveStats{})
 	}
 
 	return uint32(moves.Size)
@@ -169,7 +169,7 @@ func (ops *UtttOperations) BackTraverse() {
 }
 
 // Play the game until a terminal node is reached
-func (ops *UtttOperations) Rollout() mcts.Result {
+func (ops *UtttOperations) Rollout() *mcts.RaveDefaultGameResult[uttt.PosType] {
 	var moves *uttt.MoveList
 	var move uttt.PosType
 	var result mcts.Result = 0.5
@@ -199,11 +199,11 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 		ops.position.UndoMove()
 	}
 
-	return result
+	return mcts.NewRaveGameResult[uttt.PosType](result, nil)
 }
 
-func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
-	return mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](&UtttOperations{
+func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]] {
+	return mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
 		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),

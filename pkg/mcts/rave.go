@@ -116,8 +116,41 @@ func RAVE[T MoveLike, S RaveStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 }
 
 type RaveGameResult[T MoveLike] interface {
+	// Result of the game
 	Value() Result
+	// Moves played in rollout, but only the ones played by current player
 	Moves() []T
+	// Append new move
+	Append(T)
+	// Switch turn
+	SwitchTurn()
+}
+
+type RaveDefaultGameResult[T MoveLike] struct {
+	v   Result
+	mvs []T
+}
+
+func NewRaveGameResult[T MoveLike](v Result, mvs []T) *RaveDefaultGameResult[T] {
+	return &RaveDefaultGameResult[T]{
+		v: v, mvs: mvs,
+	}
+}
+
+func (r *RaveDefaultGameResult[T]) Value() Result {
+	return r.v
+}
+
+func (r *RaveDefaultGameResult[T]) Moves() []T {
+	return r.mvs
+}
+
+func (r *RaveDefaultGameResult[T]) Append(move T) {
+
+}
+
+func (r *RaveDefaultGameResult[T]) SwitchTurn() {
+
 }
 
 type RaveGameOperations[T MoveLike, S RaveStatsLike, R RaveGameResult[T]] interface {
@@ -139,20 +172,35 @@ func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *
 	*/
 
 	v := result.Value()
-	for node != nil {
 
-		// Reverse virtual loss for non-root
-		if node.Parent != nil {
-			node.Stats.AddVvl(1-VirtualLoss, -VirtualLoss)
-		} else {
-			node.Stats.AddVvl(1, 0)
-		}
+	for node != nil {
 
 		v = 1.0 - v // switch the result
 		// Add the outcome
 		node.Stats.AddOutcome(v)
 
+		// Reverse virtual loss for non-root
+		if node.Parent != nil {
+			node.Stats.AddVvl(1-VirtualLoss, -VirtualLoss)
+
+			mvs := result.Moves()
+			var ch *NodeBase[T, S]
+			for i := range node.Parent.Children {
+				// Check if the child contains a move from the playout
+				ch = &node.Parent.Children[i]
+				for j := range mvs {
+					if ch.NodeSignature == mvs[j] {
+						ch.Stats.AddRaveOCM(v)
+						ch.Stats.AddRavePCM(1)
+					}
+				}
+			}
+		} else {
+			node.Stats.AddVvl(1, 0)
+		}
+
 		// Backpropagate
+		result.SwitchTurn()
 		node = node.Parent
 		ops.BackTraverse()
 	}

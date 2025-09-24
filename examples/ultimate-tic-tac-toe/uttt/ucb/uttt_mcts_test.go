@@ -1,4 +1,4 @@
-package basic_uttt_mcts
+package ucb_uttt
 
 import (
 	"context"
@@ -11,6 +11,20 @@ import (
 	"testing"
 	"time"
 )
+
+// Default selection used for debugging
+func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.NodeStats] {
+	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+}
+
+// Default backprop used for debugging
+func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats], result mcts.Result) {
+	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
+}
+
+func (tree *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
+	return tree.ops
+}
 
 func TestMCTSBasicFunctionality(t *testing.T) {
 	pos := uttt.NewPosition()
