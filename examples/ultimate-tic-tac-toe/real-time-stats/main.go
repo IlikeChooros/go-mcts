@@ -41,12 +41,12 @@ func main() {
 	tree.SetLimits(mcts.DefaultLimits().SetThreads(4).SetMbSize(32).SetDepth(8))
 
 	// Create a new listener, this shouldn't be a pointer, as it will be copied internally
-	listener := mcts.NewStatsListener[uttt.PosType, *mcts.NodeStats]()
+	listener := mcts.NewStatsListener[uttt.PosType]()
 
 	// Set the listener to print the current best move and evaluation on depth change
 	// OnDepth: will be called only by the main search thread, so no need for synchronization
 	// OnCycle: will be called every N cycles (SetCycleInterval to set N), this might slow down the search significantly if N is small,
-	//          because of pv evaluation, so use it only for debugging
+	//          because of pv evaluation, so use it wisely
 	// OnStop:  will be called once, when the search ends, making the 'StopReason' available
 	listener.
 		OnDepth(func(stats mcts.ListenerTreeStats[uttt.PosType]) {
@@ -73,7 +73,7 @@ func main() {
 			// Now the 'StopReason' is available
 			fmt.Printf("Search stopped, reason: %s\n", stats.StopReason.String())
 		}).
-		SetCycleInterval(cycleInterval) // Call every 50000 cycles, failing to set will make the listener call
+		SetCycleInterval(cycleInterval) // Call every 50000 cycles, failing to set will make the listener call on every cycle
 
 	// Attach the listener to the MCTS tree
 	tree.SetListener(listener)

@@ -16,7 +16,7 @@ import (
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[uttt.PosType, *mcts.NodeStats]
+	mcts.MCTS[uttt.PosType, *mcts.NodeStats, mcts.Result]
 	ops *UtttOperations
 }
 
@@ -28,10 +28,11 @@ func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,
-			mcts.GameOperations[uttt.PosType, *mcts.NodeStats](uttt_ops),
+			mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](uttt_ops),
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
 			&mcts.NodeStats{},
+			mcts.DefaultBackprop[uttt.PosType, *mcts.NodeStats, mcts.Result]{},
 		),
 		ops: uttt_ops,
 	}
@@ -59,10 +60,10 @@ func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.NodeStats] 
 
 // Default backprop used for debugging
 func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.NodeStats], result mcts.Result) {
-	tree.MCTS.Backpropagate(tree.ops, node, result)
+	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
 }
 
-func (tree *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType, *mcts.NodeStats] {
+func (tree *UtttMCTS) Ops() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
 	return tree.ops
 }
 
@@ -201,8 +202,8 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 	return result
 }
 
-func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.NodeStats] {
-	return mcts.GameOperations[uttt.PosType, *mcts.NodeStats](&UtttOperations{
+func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
+	return mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
 		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),

@@ -45,10 +45,7 @@ func TestMCTSExpansion(t *testing.T) {
 	ops := &UtttOperations{position: *pos}
 
 	// Create a root node
-	root := &mcts.NodeBase[uttt.PosType, *mcts.NodeStats]{
-		// Non-zero visits to trigger expansion
-		Flags: mcts.TerminalFlag(false),
-	}
+	root := mcts.NewBaseNode(nil, uttt.PosIllegal, false, &mcts.NodeStats{})
 	root.Stats.SetVvl(0, 0)
 
 	// Test expansion

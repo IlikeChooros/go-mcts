@@ -19,7 +19,7 @@ type ListenerTreeStats[T MoveLike] struct {
 }
 
 // Convert TreeStats to 'ListenerTreeStats' struct
-func toListenerStats[T MoveLike, S NodeStatsLike](tree *MCTS[T, S]) ListenerTreeStats[T] {
+func toListenerStats[T MoveLike, S NodeStatsLike, R GameResult](tree *MCTS[T, S, R]) ListenerTreeStats[T] {
 	pv := tree.MultiPv(BestChildMostVisits)
 	lines := make([]SearchLine[T], len(pv))
 	for i := range len(pv) {
@@ -47,7 +47,7 @@ func toListenerStats[T MoveLike, S NodeStatsLike](tree *MCTS[T, S]) ListenerTree
 // max depth of tree, number of iterations so far
 type ListenerFunc[T MoveLike] func(ListenerTreeStats[T])
 
-type StatsListener[T MoveLike, S NodeStatsLike] struct {
+type StatsListener[T MoveLike] struct {
 	// called when 'max depth' increases, receives new max depth
 	onDepth ListenerFunc[T]
 
@@ -59,31 +59,25 @@ type StatsListener[T MoveLike, S NodeStatsLike] struct {
 	onStop ListenerFunc[T]
 }
 
-func NewStatsListener[T MoveLike, S NodeStatsLike]() StatsListener[T, S] {
-	return StatsListener[T, S]{nCycles: 1}
+func NewStatsListener[T MoveLike]() StatsListener[T] {
+	return StatsListener[T]{nCycles: 1}
 }
 
 // Attach new on max depth change callback, will be called only be the main search thread,
 // meaning no need for synchronization here
-func (listener *StatsListener[T, S]) OnDepth(onDepth ListenerFunc[T]) *StatsListener[T, S] {
+func (listener *StatsListener[T]) OnDepth(onDepth ListenerFunc[T]) *StatsListener[T] {
 	listener.onDepth = onDepth
 	return listener
 }
 
 // Attach new on iteration increase callback, this will significantly slow down the search,
 // because of pv evaluation, so use it only for debugging
-func (listener *StatsListener[T, S]) OnCycle(onCycle ListenerFunc[T]) *StatsListener[T, S] {
+func (listener *StatsListener[T]) OnCycle(onCycle ListenerFunc[T]) *StatsListener[T] {
 	listener.onCycle = onCycle
 	return listener
 }
 
-func (listener *StatsListener[T, S]) invokeCycle(tree *MCTS[T, S]) {
-	if listener.onCycle != nil && tree.Root.Stats.Visits()%int32(listener.nCycles) == 0 {
-		listener.onCycle(toListenerStats(tree))
-	}
-}
-
-func (listener *StatsListener[T, S]) SetCycleInterval(n int) *StatsListener[T, S] {
+func (listener *StatsListener[T]) SetCycleInterval(n int) *StatsListener[T] {
 	if n < 1 {
 		n = 1
 	}
@@ -93,7 +87,7 @@ func (listener *StatsListener[T, S]) SetCycleInterval(n int) *StatsListener[T, S
 
 // Attach 'on search end' callback, called once by the main thread,
 // makes 'StopReason' available in the stats
-func (listener *StatsListener[T, S]) OnStop(onStop ListenerFunc[T]) *StatsListener[T, S] {
+func (listener *StatsListener[T]) OnStop(onStop ListenerFunc[T]) *StatsListener[T] {
 	listener.onStop = onStop
 	return listener
 }
