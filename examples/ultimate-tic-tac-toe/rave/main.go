@@ -14,7 +14,7 @@ func main() {
 	tree := rave.NewUtttMCTS(*uttt.NewPosition())
 
 	// Set search parameters
-	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(2))
+	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(4))
 
 	// Run the search, will block until done
 	tree.Search()

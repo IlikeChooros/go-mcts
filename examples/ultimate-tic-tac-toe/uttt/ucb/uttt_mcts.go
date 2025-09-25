@@ -187,10 +187,13 @@ func (ops *UtttOperations) Rollout() mcts.Result {
 	return result
 }
 
+func (ops *UtttOperations) SetRand(r *rand.Rand) {
+	ops.random = r
+}
+
 func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result] {
 	return mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
-		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),
 	})
 }

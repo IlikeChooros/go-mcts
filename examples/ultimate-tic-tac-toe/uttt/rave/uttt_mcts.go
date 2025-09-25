@@ -14,9 +14,40 @@ import (
 	"unsafe"
 )
 
+type UtttGameResult struct {
+	omoves []uttt.PosType
+	xmoves []uttt.PosType
+	turn   uttt.TurnType
+	result mcts.Result
+}
+
+func (r *UtttGameResult) Value() mcts.Result {
+	return r.result
+}
+
+func (r *UtttGameResult) Moves() []uttt.PosType {
+	mvs := r.xmoves
+	if r.turn == uttt.CircleTurn {
+		mvs = r.omoves
+	}
+	return mvs
+}
+
+func (r *UtttGameResult) Append(m uttt.PosType) {
+	mvptr := &r.xmoves
+	if r.turn == uttt.CircleTurn {
+		mvptr = &r.omoves
+	}
+	*mvptr = append(*mvptr, m)
+}
+
+func (r *UtttGameResult) SwitchTurn() {
+	r.turn = uttt.TurnType(!r.turn)
+}
+
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]]
+	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *UtttGameResult]
 	ops *UtttOperations
 }
 
@@ -27,12 +58,12 @@ func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	uttt_ops := newUtttOps(position)
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
-			mcts.UCB1,
-			mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]](uttt_ops),
+			mcts.RAVE,
+			mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult](uttt_ops),
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
 			&mcts.RaveStats{},
-			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]]{},
+			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *UtttGameResult]{},
 		),
 		ops: uttt_ops,
 	}
@@ -59,11 +90,11 @@ func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.RaveStats] 
 }
 
 // Default backprop used for debugging
-func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *mcts.RaveDefaultGameResult[uttt.PosType]) {
+func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *UtttGameResult) {
 	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
 }
 
-func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]] {
+func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
 	return tree.ops
 }
 
@@ -129,14 +160,14 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 type UtttOperations struct {
 	position uttt.Position
 	rootSide uttt.TurnType
-	random   *rand.Rand
+	// Will be set by search thread, with 'SetRand'
+	random *rand.Rand
 }
 
 func newUtttOps(pos uttt.Position) *UtttOperations {
 	return &UtttOperations{
 		position: pos,
 		rootSide: pos.Turn(),
-		random:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -169,12 +200,14 @@ func (ops *UtttOperations) BackTraverse() {
 }
 
 // Play the game until a terminal node is reached
-func (ops *UtttOperations) Rollout() *mcts.RaveDefaultGameResult[uttt.PosType] {
+func (ops *UtttOperations) Rollout() *UtttGameResult {
 	var moves *uttt.MoveList
 	var move uttt.PosType
 	var result mcts.Result = 0.5
 	var moveCount int = 0
 	leafTurn := ops.position.Turn()
+	xmoves := uttt.NewMoveList()
+	omoves := uttt.NewMoveList()
 
 	for !ops.position.IsTerminated() {
 		moveCount++
@@ -182,7 +215,15 @@ func (ops *UtttOperations) Rollout() *mcts.RaveDefaultGameResult[uttt.PosType] {
 
 		// Choose at random move
 		move = moves.Moves[ops.random.Int31()%int32(moves.Size)]
+
+		if ops.position.Turn() == uttt.CircleTurn {
+			omoves.AppendMove(move)
+		} else {
+			xmoves.AppendMove(move)
+		}
+
 		ops.position.MakeMove(move)
+		// movesPlayed.AppendMove(move)
 	}
 
 	// If that's not a draw
@@ -199,13 +240,21 @@ func (ops *UtttOperations) Rollout() *mcts.RaveDefaultGameResult[uttt.PosType] {
 		ops.position.UndoMove()
 	}
 
-	return mcts.NewRaveGameResult[uttt.PosType](result, nil)
+	return &UtttGameResult{
+		omoves: omoves.Slice(),
+		xmoves: xmoves.Slice(),
+		result: result,
+		turn:   leafTurn,
+	}
 }
 
-func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]] {
-	return mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *mcts.RaveDefaultGameResult[uttt.PosType]](&UtttOperations{
+func (ops *UtttOperations) SetRand(r *rand.Rand) {
+	ops.random = r
+}
+
+func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
+	return mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult](&UtttOperations{
 		position: ops.position.Clone(),
 		rootSide: ops.rootSide,
-		random:   rand.New(rand.NewSource(time.Now().UnixMicro())),
 	})
 }

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -63,6 +65,8 @@ type GameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
 	Reset()
 	// Clone itself, without any shared memory with the other object
 	Clone() GameOperations[T, S, R]
+	// Sets the random genertor
+	SetRand(*rand.Rand)
 }
 
 type TreeStats struct {
@@ -108,6 +112,7 @@ func NewMTCS[T MoveLike, S NodeStatsLike, R GameResult](
 
 	// Set IsSearching to false
 	mcts.Limiter.Stop()
+	operations.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
 
 	// Expand the root node, by default
 	if mcts.Root.CanExpand() {

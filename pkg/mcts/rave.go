@@ -2,6 +2,7 @@ package mcts
 
 import (
 	"math"
+	"slices"
 	"sync/atomic"
 )
 
@@ -146,11 +147,10 @@ func (r *RaveDefaultGameResult[T]) Moves() []T {
 }
 
 func (r *RaveDefaultGameResult[T]) Append(move T) {
-
+	r.mvs = append(r.mvs, move)
 }
 
 func (r *RaveDefaultGameResult[T]) SwitchTurn() {
-
 }
 
 type RaveGameOperations[T MoveLike, S RaveStatsLike, R RaveGameResult[T]] interface {
@@ -188,13 +188,13 @@ func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *
 			for i := range node.Parent.Children {
 				// Check if the child contains a move from the playout
 				ch = &node.Parent.Children[i]
-				for j := range mvs {
-					if ch.NodeSignature == mvs[j] {
-						ch.Stats.AddRaveOCM(v)
-						ch.Stats.AddRavePCM(1)
-					}
+				if slices.Contains(mvs, ch.NodeSignature) {
+					ch.Stats.AddRaveOCM(v)
+					ch.Stats.AddRavePCM(1)
 				}
 			}
+
+			result.Append(node.NodeSignature)
 		} else {
 			node.Stats.AddVvl(1, 0)
 		}

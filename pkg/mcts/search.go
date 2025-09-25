@@ -128,6 +128,7 @@ func (mcts *MCTS[T, S, R]) setupSearch() {
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
 func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S, R], threadId int) {
 	threadRand := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadId)))
+	ops.SetRand(threadRand)
 
 	if root.Terminal() || len(root.Children) == 0 {
 		if threadId == 0 {
