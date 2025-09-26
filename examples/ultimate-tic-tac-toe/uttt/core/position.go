@@ -19,7 +19,7 @@ type Position struct {
 	// hash             uint64 // Current hash of the position
 }
 
-// Create a heap-allocated, initialized Big Tic Tac Toe position
+// Create initialized Big Tic Tac Toe position
 func NewPosition() *Position {
 	pos := &Position{}
 	pos.Init()

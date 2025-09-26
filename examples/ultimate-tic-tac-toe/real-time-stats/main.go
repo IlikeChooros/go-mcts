@@ -16,9 +16,10 @@ and evaluation every time a new depth is reached or every 50000 cycles.
 
 import (
 	"fmt"
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
-	"go-mcts/pkg/mcts"
+
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	basic_uttt_mcts "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
 func main() {
@@ -32,13 +33,13 @@ func main() {
 
 	// Create a new UTTT MCTS instance
 	position := uttt.NewPosition()
-	turn := position.Turn()
+	// turn := position.Turn()
 	tree := basic_uttt_mcts.NewUtttMCTS(*position)
 
 	// Set search parameters, try using different limits and see how it affects the search
 	// Also notice that MaxDepth != Pv depth, MaxDepth is only the maximum depth reached in the tree,
 	// meaning there is *usually* only 1 node at that depth, so the Pv might not include that depth at all
-	tree.SetLimits(mcts.DefaultLimits().SetThreads(4).SetMbSize(32).SetDepth(8))
+	tree.SetLimits(mcts.DefaultLimits().SetThreads(4).SetMbSize(32).SetDepth(8).SetMultiPv(2))
 
 	// Create a new listener, this shouldn't be a pointer, as it will be copied internally
 	listener := mcts.NewStatsListener[uttt.PosType]()
@@ -52,22 +53,11 @@ func main() {
 		OnDepth(func(stats mcts.ListenerTreeStats[uttt.PosType]) {
 			// Get the current best move and evaluation, using the 'MostVisits' policy
 			result := tree.SearchResult(bestChildPolicy)
-			mainLine, ok := result.MainLine()
-			if !ok || len(mainLine.Pv) == 0 {
-				return
-			}
-
-			fmt.Printf("[Depth %d] WinRate: %s, Cycles: %d, Time: %dms, CPS: %d, pv: %v\n",
-				stats.Maxdepth, mainLine.StringValue(turn, false), stats.Cycles, stats.TimeMs, stats.Cps, mainLine.Pv)
+			fmt.Printf("[Depth %d] %s\n", stats.Maxdepth, result.String())
 		}).
 		OnCycle(func(stats mcts.ListenerTreeStats[uttt.PosType]) {
 			result := tree.SearchResult(bestChildPolicy)
-			mainLine, ok := result.MainLine()
-			if !ok || len(mainLine.Pv) == 0 {
-				return
-			}
-
-			fmt.Printf("[Cycle %d] %s\n", stats.Cycles, result.String())
+			fmt.Printf("[Cycles %d] %s\n", stats.Cycles, result.String())
 		}).
 		OnStop(func(stats mcts.ListenerTreeStats[uttt.PosType]) {
 			// Now the 'StopReason' is available

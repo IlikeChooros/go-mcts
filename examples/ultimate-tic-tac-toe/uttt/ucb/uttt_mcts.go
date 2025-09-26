@@ -7,11 +7,12 @@ Ultimate Tic Tac Toe MCTS implementation with UCB1 selection
 */
 
 import (
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	"go-mcts/pkg/mcts"
 	"math/rand"
 	"time"
 	"unsafe"
+
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
 // Actual UTTT mcts implementation
@@ -28,7 +29,7 @@ func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,
-			mcts.GameOperations[uttt.PosType, *mcts.NodeStats, mcts.Result](uttt_ops),
+			uttt_ops,
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
 			&mcts.NodeStats{},
@@ -111,10 +112,35 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 	return result
 }
 
+// Must meet mcts.GameOperations
+// That is:
+//
+// - Reset() - called in tree's Reset method when discarding current search,
+// useful for internal state reset (like the rootSide = postion.Turn())
+//
+// - ExpandNode() - which must acutally append children to provided node,
+// use the mcts.NewBaseNode() function for proper node initialization
+//
+// - Traverse(move) - called to update the internal position state, when traversing
+// the tree
+//
+// - BackTraverse() - simply undo the last move, position object should hold a history of
+// moves, since that function will be called repeatedly
+//
+// - Rollout() Result - Plays a game until a terminal node is reached, assigns a result based
+// on the starting node's perspective
+//
+// optional:
+//
+// - SetRand(rand.Rand) - (from math.rand), sets a random generator created in the search thread.
+// Add this function if you want to perform light playouts (making random moves)
 type UtttOperations struct {
 	position uttt.Position
+	// This is needed for the SearchResult to work properly, since
+	// I allow calling that function during the search (ops.position.Turn() may return wrong one)
 	rootSide uttt.TurnType
-	random   *rand.Rand
+	// Will be set by search thread, with 'SetRand'
+	random *rand.Rand
 }
 
 func newUtttOps(pos uttt.Position) *UtttOperations {
@@ -145,8 +171,8 @@ func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType, *mcts.No
 	return uint32(moves.Size)
 }
 
-func (ops *UtttOperations) Traverse(signature uttt.PosType) {
-	ops.position.MakeMove(signature)
+func (ops *UtttOperations) Traverse(move uttt.PosType) {
+	ops.position.MakeMove(move)
 }
 
 func (ops *UtttOperations) BackTraverse() {
@@ -154,6 +180,7 @@ func (ops *UtttOperations) BackTraverse() {
 }
 
 // Play the game until a terminal node is reached
+// The result is relative to the 'starting' node of the rollout
 func (ops *UtttOperations) Rollout() mcts.Result {
 	var moves *uttt.MoveList
 	var move uttt.PosType

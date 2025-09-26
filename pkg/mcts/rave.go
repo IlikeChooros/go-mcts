@@ -17,6 +17,7 @@ type RaveStatsLike interface {
 
 	// Outcomes contating node's move
 	RaveOCM() Result
+	RaveRawOCM() int32
 	// # Playouts contating node's move
 	RavePCM() int32
 	// Add new outcome, that contains node's move
@@ -36,8 +37,24 @@ type RaveStats struct {
 	playoutsContainingMove int32
 }
 
+func (r *RaveStats) Clone() NodeStatsLike {
+	return &RaveStats{
+		NodeStats: NodeStats{
+			sumOutcomes: atomic.LoadUint64(&r.sumOutcomes),
+			visits:      atomic.LoadInt32(&r.visits),
+			virtualLoss: atomic.LoadInt32(&r.virtualLoss),
+		},
+		outcomesContainingMove: r.RaveRawOCM(),
+		playoutsContainingMove: r.RavePCM(),
+	}
+}
+
 func (r *RaveStats) RaveOCM() Result {
 	return Result(atomic.LoadInt32(&r.outcomesContainingMove) / 1e3)
+}
+
+func (r *RaveStats) RaveRawOCM() int32 {
+	return atomic.LoadInt32(&r.outcomesContainingMove)
 }
 
 func (r *RaveStats) RavePCM() int32 {
@@ -188,13 +205,13 @@ func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *
 			for i := range node.Parent.Children {
 				// Check if the child contains a move from the playout
 				ch = &node.Parent.Children[i]
-				if slices.Contains(mvs, ch.NodeSignature) {
+				if slices.Contains(mvs, ch.Move) {
 					ch.Stats.AddRaveOCM(v)
 					ch.Stats.AddRavePCM(1)
 				}
 			}
 
-			result.Append(node.NodeSignature)
+			result.Append(node.Move)
 		} else {
 			node.Stats.AddVvl(1, 0)
 		}

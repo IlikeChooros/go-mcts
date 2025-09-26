@@ -2,18 +2,25 @@ package rave_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS implementation with UCB1 selection
+Ultimate Tic Tac Toe MCTS implementation with RAVE selection
+
+The code somewhat differs from the UCB example, mainly we have to manually
+implement GameResult (UtttGameResult) and return it in Rollout (GameOperations).
+
+Also in the Rollout, besides returning the float value of the result, moves that were
+played also must be returned.
 
 */
 
 import (
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	"go-mcts/pkg/mcts"
 	"math/rand"
-	"time"
 	"unsafe"
+
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
+// Must meet mcts.RaveGameResult
 type UtttGameResult struct {
 	omoves []uttt.PosType
 	xmoves []uttt.PosType
@@ -21,10 +28,13 @@ type UtttGameResult struct {
 	result mcts.Result
 }
 
+// The result of the playout [0, 1]: 1 - this side won, 0 - this side lost
 func (r *UtttGameResult) Value() mcts.Result {
 	return r.result
 }
 
+// Returns moves played in rollout (playout), so that they match
+// with current player's turn
 func (r *UtttGameResult) Moves() []uttt.PosType {
 	mvs := r.xmoves
 	if r.turn == uttt.CircleTurn {
@@ -33,6 +43,8 @@ func (r *UtttGameResult) Moves() []uttt.PosType {
 	return mvs
 }
 
+// During backpropagation, moves will be appended
+// to match with the tree's selected path
 func (r *UtttGameResult) Append(m uttt.PosType) {
 	mvptr := &r.xmoves
 	if r.turn == uttt.CircleTurn {
@@ -41,17 +53,20 @@ func (r *UtttGameResult) Append(m uttt.PosType) {
 	*mvptr = append(*mvptr, m)
 }
 
+// This will be called in backpropagation of the game result.
+// It is mainly for switching the moves that were played in the rollout,
+// so that they match with current's player turn.
 func (r *UtttGameResult) SwitchTurn() {
 	r.turn = uttt.TurnType(!r.turn)
 }
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
+	// Using mcts.RaveStats (which meet the mcts.RaveStatsLike interface)
+	// and UtttGameResult (meets the mcts.RaveGameResult[uttt.PosType])
 	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *UtttGameResult]
 	ops *UtttOperations
 }
-
-type UtttNode mcts.NodeBase[uttt.PosType, *mcts.RaveStats]
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
@@ -59,7 +74,7 @@ func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	tree := &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.RAVE,
-			mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult](uttt_ops),
+			uttt_ops,
 			mcts.TerminalFlag(position.IsTerminated()),
 			mcts.MultithreadTreeParallel,
 			&mcts.RaveStats{},
@@ -84,20 +99,7 @@ func (tree *UtttMCTS) Search() {
 	tree.Synchronize()
 }
 
-// Default selection used for debugging
-func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.RaveStats] {
-	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
-}
-
-// Default backprop used for debugging
-func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *UtttGameResult) {
-	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
-}
-
-func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
-	return tree.ops
-}
-
+// Remove current game tree, resets the tree's and game ops's state
 func (tree *UtttMCTS) Reset() {
 	tree.MCTS.Reset(tree.ops, tree.ops.position.IsTerminated(), &mcts.RaveStats{})
 }
@@ -157,8 +159,32 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 	return result
 }
 
+// Must meet mcts.GameOperations
+// That is:
+//
+// - Reset() - called in tree's Reset method when discarding current search,
+// useful for internal state reset (like the rootSide = postion.Turn())
+//
+// - ExpandNode() - which must acutally append children to provided node,
+// use the mcts.NewBaseNode() function for proper node initialization
+//
+// - Traverse(move) - called to update the internal position state, when traversing
+// the tree
+//
+// - BackTraverse() - simply undo the last move, position object should hold a history of
+// moves, since that function will be called repeatedly
+//
+// - Rollout() Result - Plays a game until a terminal node is reached, assigns a result based
+// on the starting node's perspective
+//
+// optional:
+//
+// - SetRand(rand.Rand) - (from math.rand), sets a random generator created in the search thread.
+// Add this function if you want to perform light playouts (making random moves)
 type UtttOperations struct {
 	position uttt.Position
+	// This is needed for the SearchResult to work properly, since
+	// I allow calling that function during the search (ops.position.Turn() may return wrong one)
 	rootSide uttt.TurnType
 	// Will be set by search thread, with 'SetRand'
 	random *rand.Rand
@@ -213,7 +239,8 @@ func (ops *UtttOperations) Rollout() *UtttGameResult {
 		moveCount++
 		moves = ops.position.GenerateMoves()
 
-		// Choose at random move
+		// Choose at random move, the ops.random is non-nil, because it was
+		// set in the begining of the search (with the SetRand method)
 		move = moves.Moves[ops.random.Int31()%int32(moves.Size)]
 
 		if ops.position.Turn() == uttt.CircleTurn {
@@ -248,13 +275,14 @@ func (ops *UtttOperations) Rollout() *UtttGameResult {
 	}
 }
 
+// Sets the random number generator, called at the begining of the search
 func (ops *UtttOperations) SetRand(r *rand.Rand) {
 	ops.random = r
 }
 
+// It should return a deep copy of the ops object
 func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
 	return mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult](&UtttOperations{
 		position: ops.position.Clone(),
-		rootSide: ops.rootSide,
 	})
 }

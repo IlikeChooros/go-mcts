@@ -1,3 +1,3 @@
-module go-mcts
+module github.com/IlikeChooros/go-mcts
 
-go 1.24.3
+go 1.22.0

@@ -31,6 +31,7 @@ const (
 	DefaultCyclesLimit   uint32 = math.MaxInt32*2 + 1
 )
 
+// By default will search indefinitely with 1 search thread and 1 pv line
 func DefaultLimits() *Limits {
 	return &Limits{
 		Depth:    DefaultDepthLimit,
@@ -57,17 +58,19 @@ func (l *Limits) SetCycles(visits uint32) *Limits {
 	return l
 }
 
-// Set the maximum time for engine to think
+// Set the maximum time for engine to think in ms
 func (l *Limits) SetMovetime(movetime int) *Limits {
 	l.Movetime = movetime
 	l.Infinite = false
 	return l
 }
 
+// If set to true, will ignore the previous limits and search indefinitely
 func (l *Limits) SetInfinite(infinite bool) {
 	l.Infinite = infinite
 }
 
+// Number of search threads, by default 1
 func (l *Limits) SetThreads(threads int) *Limits {
 	l.NThreads = max(threads, 1)
 	return l

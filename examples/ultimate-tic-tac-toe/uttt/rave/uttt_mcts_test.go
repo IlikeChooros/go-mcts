@@ -2,12 +2,28 @@ package rave_uttt
 
 import (
 	"fmt"
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	"go-mcts/pkg/mcts"
 	"math/rand"
 	"strings"
 	"testing"
+	"time"
+
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
+
+// Default selection used for debugging
+func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.RaveStats] {
+	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+}
+
+// Default backprop used for debugging
+func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *UtttGameResult) {
+	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
+}
+
+func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
+	return tree.ops
+}
 
 func TestMCTSRollout(t *testing.T) {
 	positions := []string{

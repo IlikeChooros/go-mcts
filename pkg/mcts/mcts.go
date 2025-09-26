@@ -35,8 +35,7 @@ const (
 	MultithreadTreeParallel MultithreadPolicy = iota
 
 	// This will spawn multiple threads (specified by Limits.NThreads) that will
-	// build independent game trees in parallel and making the move basing on
-	// the root-level branches of all these trees. Note that listeners will be called
+	// build independent game trees in parallel. Note that the listener will be called
 	// only on the main thread, so the evaluation and pv will be inaccurate until
 	// the results are merged after the search is done.
 	MultithreadRootParallel
@@ -65,6 +64,11 @@ type GameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
 	Reset()
 	// Clone itself, without any shared memory with the other object
 	Clone() GameOperations[T, S, R]
+}
+
+// Random-based rollout
+type RandGameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
+	GameOperations[T, S, R]
 	// Sets the random genertor
 	SetRand(*rand.Rand)
 }
@@ -112,7 +116,11 @@ func NewMTCS[T MoveLike, S NodeStatsLike, R GameResult](
 
 	// Set IsSearching to false
 	mcts.Limiter.Stop()
-	operations.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
+
+	// If that's random-based playouts, attach random number generator
+	if rg, ok := operations.(RandGameOperations[T, S, R]); ok {
+		rg.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
+	}
 
 	// Expand the root node, by default
 	if mcts.Root.CanExpand() {
@@ -172,6 +180,10 @@ func (mcts *MCTS[T, S, R]) SetContext(ctx context.Context) {
 	mcts.Limiter.SetContext(ctx)
 }
 
+func (mcts *MCTS[T, S, R]) SetMultithreadPolicy(policy MultithreadPolicy) {
+	mcts.multithreadPolicy = policy
+}
+
 func (mcts *MCTS[T, S, R]) IsSearching() bool {
 	return !mcts.Limiter.Stop()
 }
@@ -191,7 +203,7 @@ func (mcts *MCTS[T, S, R]) Cycles() int {
 	return int(mcts.cycles.Load())
 }
 
-// Get cycles per second statistic, available both during search and after it.
+// Get cycles per second statistic
 func (mcts *MCTS[T, S, R]) Cps() uint32 {
 	return mcts.cps.Load()
 }
@@ -245,6 +257,7 @@ func (mcts *MCTS[T, S, R]) Size() uint32 {
 	return mcts.size.Load()
 }
 
+// Returns approximation of memory usage of the tree structure
 func (mcts *MCTS[T, S, R]) MemoryUsage() uint32 {
 	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T, S]{})) + uint32(unsafe.Sizeof(MCTS[T, S, R]{}))
 }
@@ -270,10 +283,10 @@ func (mcts *MCTS[T, S, R]) Reset(ops GameOperations[T, S, R], isTerminated bool,
 }
 
 // 'the best move' in the position
-func (mcts *MCTS[T, S, R]) RootSignature() T {
+func (mcts *MCTS[T, S, R]) RootMove() T {
 	var signature T
 	if bestChild := mcts.BestChild(mcts.Root, BestChildMostVisits); bestChild != nil {
-		signature = bestChild.NodeSignature
+		signature = bestChild.Move
 	}
 	return signature
 }
@@ -286,7 +299,7 @@ func (mcts *MCTS[T, S, R]) RootScore() Result {
 	return Result(math.NaN())
 }
 
-// Return best child, based on the number of visits
+// Return best child, based on the policy
 func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolicy) *NodeBase[T, S] {
 	var bestChild *NodeBase[T, S]
 	var child *NodeBase[T, S]
@@ -303,7 +316,7 @@ func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolic
 	// for i := range node.Children {
 	// 	ch := &node.Children[i]
 	// 	fmt.Printf("%d. %v v=%d (wr=%.2f)\n",
-	// 		i+1, ch.NodeSignature, ch.Stats.Visits(),
+	// 		i+1, ch.Move, ch.Stats.Visits(),
 	// 		float64(ch.Stats.Outcomes())/float64(ch.Stats.Visits()),
 	// 	)
 	// }
@@ -349,7 +362,7 @@ func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolic
 	}
 
 	// if bestChild != nil {
-	// 	fmt.Println("Chose", bestChild.NodeSignature)
+	// 	fmt.Println("Chose", bestChild.Move)
 	// }
 
 	return bestChild
@@ -455,7 +468,7 @@ func (mcts *MCTS[T, S, R]) Pv(root *NodeBase[T, S], policy BestChildPolicy, incl
 	pv := make([]T, len(nodes))
 	for i := range len(nodes) {
 		node = nodes[i]
-		pv[i] = node.NodeSignature
+		pv[i] = node.Move
 	}
 
 	return pv, mate, (mate && node.Stats.AvgOutcome() == 0.5)

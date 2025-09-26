@@ -61,15 +61,13 @@ func mergeResult[T MoveLike, S NodeStatsLike](root *NodeBase[T, S], other *NodeB
 		child := &other.Children[i]
 
 		// Assume children are ordered the same way
-		if child.NodeSignature == root.Children[i].NodeSignature {
+		if child.Move == root.Children[i].Move {
 			mergeResult(&root.Children[i], child)
 		} else {
-			panic("[MCTS] mergeResult: child signature mismatch, make sure GameOperations.ExpandNode returns children ALWAYS in the same order")
+			// Else, that's an implementation of 'GameOperations' issue
+			// ExpandNode() must be a pure function
+			panic("[MCTS] mergeResult: child move mismatch, make sure GameOperations.ExpandNode returns children ALWAYS in the same order")
 		}
-
-		// Else, that's an implementation of 'GameOperations' issue
-		// ExpandNode() must be a pure function
-
 	}
 }
 
@@ -111,6 +109,7 @@ func (mcts *MCTS[T, S, R]) setupSearch() {
 	// mcts.timer.Reset()
 	mcts.Limiter.Reset()
 	mcts.cps.Store(0)
+	mcts.cycles.Store(0)
 	mcts.maxdepth.Store(0)
 	mcts.merged.Store(false)
 	// mcts.stop.Store(false)
@@ -128,7 +127,11 @@ func (mcts *MCTS[T, S, R]) setupSearch() {
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
 func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S, R], threadId int) {
 	threadRand := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadId)))
-	ops.SetRand(threadRand)
+
+	// For random (light) playouts, set the random number generator
+	if rg, ok := ops.(RandGameOperations[T, S, R]); ok {
+		rg.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
+	}
 
 	if root.Terminal() || len(root.Children) == 0 {
 		if threadId == 0 {
@@ -185,10 +188,10 @@ func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S,
 func (mcts *MCTS[T, S, R]) Selection(root *NodeBase[T, S], ops GameOperations[T, S, R], threadRand *rand.Rand, threadId int) *NodeBase[T, S] {
 
 	node := root
-	depth := 0
+	depth := int32(0)
 	for node.Expanded() {
 		node = mcts.selection_policy(node, root)
-		ops.Traverse(node.NodeSignature)
+		ops.Traverse(node.Move)
 		depth++
 
 		// Apply virtual loss
@@ -220,7 +223,7 @@ func (mcts *MCTS[T, S, R]) Selection(root *NodeBase[T, S], ops GameOperations[T,
 			// Select child at random
 			node = &node.Children[threadRand.Int31n(int32(len(node.Children)))]
 			// Traverse to this child
-			ops.Traverse(node.NodeSignature)
+			ops.Traverse(node.Move)
 			depth++
 			// Apply again virtual loss
 			node.Stats.AddVvl(VirtualLoss, VirtualLoss)
@@ -228,9 +231,8 @@ func (mcts *MCTS[T, S, R]) Selection(root *NodeBase[T, S], ops GameOperations[T,
 	}
 
 	// Set the 'max depth'
-	if threadId == 0 && depth >= 2 && depth > int(mcts.maxdepth.Load()) {
-		// Fix: Allow only 1 thread (main) to change the 'maxdepth'
-		mcts.maxdepth.Store(int32(depth))
+	if mcts.maxdepth.CompareAndSwap(depth-1, depth) {
+		mcts.maxdepth.Store(depth)
 		mcts.invokeListener(mcts.listener.onDepth)
 	}
 

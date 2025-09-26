@@ -6,7 +6,7 @@ This is an example of ultimate tic tac toe implementation.
 If you don't know the rules, see: https://en.wikipedia.org/wiki/Ultimate_tic-tac-toe
 
 All of the game logic is in the 'uttt' package (examples/ultimate-tic-tac-toe/uttt),
-including the MCTS implementation (uttt_mcts.go).
+including the MCTS implementation (ucb/uttt_mcts.go and rave/uttt_mcts.go).
 
 Example below shows how to run a search and get the result.
 
@@ -15,16 +15,16 @@ Example below shows how to run a search and get the result.
 import (
 	"fmt"
 
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	basic_uttt_mcts "go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
-	mcts "go-mcts/pkg/mcts"
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	ucb "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
 func main() {
-	fmt.Println("Ultimate Tic Tac Toe MCTS Example")
+	fmt.Println("Ultimate Tic Tac Toe MCTS UCB1 Example")
 
 	// Create a new UTTT MCTS instance
-	tree := basic_uttt_mcts.NewUtttMCTS(*uttt.NewPosition())
+	tree := ucb.NewUtttMCTS(*uttt.NewPosition())
 
 	// Set search parameters
 	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(4))

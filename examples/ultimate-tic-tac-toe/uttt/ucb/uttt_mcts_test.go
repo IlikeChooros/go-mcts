@@ -3,13 +3,14 @@ package ucb_uttt
 import (
 	"context"
 	"fmt"
-	uttt "go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
-	"go-mcts/pkg/mcts"
 	"math"
 	"math/rand"
 	"strings"
 	"testing"
 	"time"
+
+	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
 // Default selection used for debugging
@@ -252,7 +253,7 @@ func TestMCTSBestChild(t *testing.T) {
 	mcts.Search()
 
 	// Get best child
-	bestMove := mcts.RootSignature()
+	bestMove := mcts.RootMove()
 
 	// Verify it's a legal move
 	legalMoves := pos.GenerateMoves()

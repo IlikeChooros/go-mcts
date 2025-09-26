@@ -11,10 +11,12 @@ type NodeStatsLike interface {
 	AddOutcome(Result)
 	AvgOutcome() Result
 	Outcomes() Result
+	RawOutcomes() uint64
 	SetVvl(visits, vl int32)
 	GetVvl() (visits int32, vl int32)
 	AddVvl(visits, vl int32)
 	RealVisits() int32
+	Clone() NodeStatsLike
 }
 
 // visits/virutal loss/win/loss count of the node,
@@ -31,14 +33,8 @@ type NodeStats struct {
 	virtualLoss int32
 }
 
-func (stats *NodeStats) Copy(other NodeStats) {
-	atomic.StoreUint64(&stats.sumOutcomes, other.sumOutcomes)
-	atomic.StoreInt32(&stats.visits, other.visits)
-	atomic.StoreInt32(&stats.virtualLoss, other.virtualLoss)
-}
-
-func (stats *NodeStats) Clone() NodeStats {
-	return NodeStats{
+func (stats *NodeStats) Clone() NodeStatsLike {
+	return &NodeStats{
 		sumOutcomes: atomic.LoadUint64(&stats.sumOutcomes),
 		visits:      atomic.LoadInt32(&stats.visits),
 		virtualLoss: atomic.LoadInt32(&stats.virtualLoss),
@@ -51,6 +47,10 @@ func (stats *NodeStats) AvgOutcome() Result {
 
 func (stats *NodeStats) Outcomes() Result {
 	return Result(atomic.LoadUint64(&stats.sumOutcomes)) / 1e3
+}
+
+func (stats *NodeStats) RawOutcomes() uint64 {
+	return atomic.LoadUint64(&stats.sumOutcomes)
 }
 
 func (stats *NodeStats) AddOutcome(result Result) {

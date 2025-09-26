@@ -2,9 +2,11 @@ package uttt
 
 import (
 	"fmt"
-	"go-mcts/pkg/mcts"
 	"math"
+	"strings"
 	"unsafe"
+
+	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
 // Type defines for the position
@@ -65,8 +67,19 @@ type SearchResult struct {
 
 func (s SearchResult) String() string {
 	if len(s.Lines) > 0 {
-		return fmt.Sprintf("eval %s depth %d cps %d cycles %d size %d mem %.2f MB pv %v",
-			s.Lines[0].StringValue(s.Turn, false), s.Depth, s.Cps, s.Cycles, s.Size, float64(s.Memory)/1024/1024, s.Lines[0].Pv)
+		b := strings.Builder{}
+		b.WriteString(fmt.Sprintf("depth %d cps %d cycles %d size %d mem %.2f MB ",
+			s.Depth, s.Cps, s.Cycles, s.Size, float64(s.Memory)/1024/1024))
+
+		if len(s.Lines) == 1 {
+			b.WriteString(fmt.Sprintf("eval %s pv %v", s.Lines[0].StringValue(s.Turn, false), s.Lines[0].Pv))
+		} else {
+			for i := range s.Lines {
+				b.WriteString(fmt.Sprintf("[eval %s pv %v] ", s.Lines[i].StringValue(s.Turn, false), s.Lines[i].Pv))
+			}
+		}
+
+		return b.String()
 	}
 
 	return fmt.Sprintf("eval NaN depth %d cps %d cycles %d size %d mem %.2f MB pv empty",

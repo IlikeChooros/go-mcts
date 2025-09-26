@@ -24,7 +24,7 @@ func toListenerStats[T MoveLike, S NodeStatsLike, R GameResult](tree *MCTS[T, S,
 	lines := make([]SearchLine[T], len(pv))
 	for i := range len(pv) {
 		lines[i] = SearchLine[T]{
-			BestMove: pv[i].Root.NodeSignature,
+			BestMove: pv[i].Root.Move,
 			Moves:    pv[i].Pv,
 			Eval:     float64(pv[i].Root.Stats.AvgOutcome()),
 			Terminal: pv[i].Terminal,
