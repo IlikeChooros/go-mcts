@@ -54,6 +54,7 @@ func (node *NodeBase[T, S]) Clone() *NodeBase[T, S] {
 		// clone.Children[i].Parent = clone
 		// clone.Children[i].Flags = childClone.Flags
 		clone.Children[i] = *node.Children[i].Clone()
+		clone.Children[i].Parent = clone
 	}
 	// clone.visits.Store(node.visits.Load())
 	// clone.virtualLoss.Store(node.virtualLoss.Load())
