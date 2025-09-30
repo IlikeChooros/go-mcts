@@ -29,17 +29,21 @@ func newRootNode[T MoveLike, S NodeStatsLike](terminated bool, defaultStats S) *
 	}
 }
 
-func NewBaseNode[T MoveLike, S NodeStatsLike](parent *NodeBase[T, S], signature T, terminated bool, defaultStats S) *NodeBase[T, S] {
+// NewBaseNode creates a new child node under the given parent with the specified move.
+func NewBaseNode[T MoveLike, S NodeStatsLike](parent *NodeBase[T, S], move T, terminated bool, defaultStats S) *NodeBase[T, S] {
 	return &NodeBase[T, S]{
-		Move:     signature,
+		Move:     move,
 		Children: nil,
 		Parent:   parent,
 		Stats:    defaultStats,
-		Flags:    TerminalFlag(terminated), // flip the turn
+		Flags:    TerminalFlag(terminated),
 	}
 }
 
 func (node *NodeBase[T, S]) Clone() *NodeBase[T, S] {
+	// TODO:
+	// Test this properly
+
 	clone := &NodeBase[T, S]{
 		Move:     node.Move,
 		Children: make([]NodeBase[T, S], len(node.Children)),

@@ -262,13 +262,36 @@ func (mcts *MCTS[T, S, R]) MemoryUsage() uint32 {
 	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T, S]{})) + uint32(unsafe.Sizeof(MCTS[T, S, R]{}))
 }
 
-// Tries to make given 'move' a new root
+// Tries to make given 'move' a new root, if it failes, does nothing
 func (mcts *MCTS[T, S, R]) MakeMove(move T) {
+	// If the search is running, stop it first
+	if mcts.IsSearching() {
+		mcts.Stop()
+		mcts.Synchronize()
+	}
+
+	// Find the child with given move
+	var newRoot *NodeBase[T, S]
 	for i := range mcts.Root.Children {
 		if mcts.Root.Children[i].Move == move {
-
+			newRoot = &mcts.Root.Children[i]
+			break
 		}
 	}
+
+	if newRoot == nil {
+		return
+	}
+
+	oldRoot := mcts.Root
+	mcts.Root = newRoot
+	mcts.size.Store(uint32(countTreeNodes(newRoot)))
+
+	// Detach the new root from its parent
+	newRoot.Parent = nil
+
+	// Clear the children of the old root, to make them available for GC
+	oldRoot.Children = nil
 }
 
 // Remove previous tree & update game ops state

@@ -1,12 +1,22 @@
 package chessmcts
 
 /*
+Chess MCTS (RAVE/AMAF) example
 
-Chess MCTS implementation using the 3rd party dylhunn's chess move generation package
-(https://github.com/dylhunn/dragontoothmg)
+This example is similar to the UCB version but uses RAVE (Rapid Action Value Estimation)
+to blend standard Q-values with all-moves-as-first (AMAF) statistics. This tends to help
+in high-branching, transposable domains like chess.
 
-Using RAVE as selection policy
+Key differences vs UCB example:
+  - Node stats type is mcts.RaveStats (implements RaveStatsLike).
+  - Backpropagation strategy is mcts.RaveBackprop[…], which updates AMAF counters.
+  - Rollout returns a RaveGameResult that carries:
+      * The playout result in [0,1]
+      * The sequence of moves played by white and by black, so ancestors can update AMAF.
 
+Integration notes:
+  - ExpandNode is unchanged in spirit: generate legal moves, init child nodes.
+  - Rollout must track moves by side-to-move so AMAF updates can match ancestor turns.
 */
 
 import (
@@ -16,26 +26,29 @@ import (
 	mcts "github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
 
+// RaveGameOps implements the chess-specific GameOperations for RAVE mode.
 type RaveGameOps struct {
 	board  *chess.Board
-	random *rand.Rand
+	random *rand.Rand // injected by the worker
 }
 
-// Must meet mcts.RaveGameResult
+// RaveGameResult implements mcts.RaveGameResult[chess.Move].
+// It stores the playout result and the moves played, split by side, and tracks
+// whose turn it is to align move lists with the tree path during backprop.
 type RaveGameResult struct {
-	wmoves  []chess.Move
-	bmoves  []chess.Move
-	wtomove bool
-	result  mcts.Result
+	wmoves  []chess.Move // moves played by white during the playout
+	bmoves  []chess.Move // moves played by black during the playout
+	wtomove bool         // current player at the moment (used during backprop switch)
+	result  mcts.Result  // [0,1] from the perspective of the rollout root
 }
 
-// The result of the playout [0, 1]: 1 - this side won, 0 - this side lost
+// Value returns the playout result in [0,1].
 func (r *RaveGameResult) Value() mcts.Result {
 	return r.result
 }
 
-// Returns moves played in rollout (playout), so that they match
-// with current player's turn
+// Moves returns the list of moves played by the current player.
+// Backprop will call SwitchTurn to alternate which list is active.
 func (r *RaveGameResult) Moves() []chess.Move {
 	mvs := r.bmoves
 	if r.wtomove {
@@ -44,8 +57,7 @@ func (r *RaveGameResult) Moves() []chess.Move {
 	return mvs
 }
 
-// During backpropagation, moves will be appended
-// to match with the tree's selected path
+// Append pushes a move into the current player's move list during backprop.
 func (r *RaveGameResult) Append(m chess.Move) {
 	mvptr := &r.bmoves
 	if r.wtomove {
@@ -54,47 +66,48 @@ func (r *RaveGameResult) Append(m chess.Move) {
 	*mvptr = append(*mvptr, m)
 }
 
-// This will be called in backpropagation of the game result.
-// It is mainly for switching the moves that were played in the rollout,
-// so that they match with current's player turn.
+// SwitchTurn flips the side-to-move context so Append/Moves target the other list.
 func (r *RaveGameResult) SwitchTurn() {
 	r.wtomove = !r.wtomove
 }
 
+// RaveMctsType wires go-mcts with chess types and the RAVE policy and stats.
 type RaveMctsType struct {
 	mcts.MCTS[chess.Move, *mcts.RaveStats, *RaveGameResult]
 	ops *RaveGameOps
 }
 
+// NewRaveMcts constructs a ready-to-search MCTS instance configured for RAVE.
 func NewRaveMcts() *RaveMctsType {
 	ops := newRaveGameOps()
 	Mcts := &RaveMctsType{
 		MCTS: *mcts.NewMTCS(
-			mcts.RAVE,
+			mcts.RAVE, // RAVE selection policy
 			ops,
 			0,
 			mcts.MultithreadTreeParallel,
-			&mcts.RaveStats{},
-			mcts.RaveBackprop[chess.Move, *mcts.RaveStats, *RaveGameResult]{},
+			&mcts.RaveStats{}, // stats that include AMAF counters
+			mcts.RaveBackprop[chess.Move, *mcts.RaveStats, *RaveGameResult]{}, // backprop with AMAF updates
 		),
 		ops: ops,
 	}
-
 	return Mcts
 }
 
+// Search runs the search and waits for completion.
 func (ucb *RaveMctsType) Search() {
 	ucb.SearchMultiThreaded(ucb.ops)
-
 	ucb.Synchronize()
 }
 
+// newRaveGameOps creates a fresh operations object at the initial position.
 func newRaveGameOps() *RaveGameOps {
 	return &RaveGameOps{
 		board: chess.NewBoard(),
 	}
 }
 
+// ExpandNode adds all legal child moves under p, initializing each to RaveStats.
 func (o *RaveGameOps) ExpandNode(p *mcts.NodeBase[chess.Move, *mcts.RaveStats]) uint32 {
 	moves := o.board.GenerateLegalMoves()
 	p.Children = make([]mcts.NodeBase[chess.Move, *mcts.RaveStats], len(moves))
@@ -103,23 +116,33 @@ func (o *RaveGameOps) ExpandNode(p *mcts.NodeBase[chess.Move, *mcts.RaveStats]) 
 		o.board.Make(moves[i])
 		isTerminal := o.board.IsTerminated(len(o.board.GenerateLegalMoves()))
 		o.board.Undo()
+
 		p.Children[i] = *mcts.NewBaseNode(p, moves[i], isTerminal, &mcts.RaveStats{})
 	}
 
 	return uint32(len(moves))
 }
 
+// Traverse applies a move to the board when descending the tree.
 func (o *RaveGameOps) Traverse(m chess.Move) {
 	o.board.Make(m)
 }
 
+// BackTraverse undoes the last move when ascending during backpropagation.
 func (o *RaveGameOps) BackTraverse() {
 	o.board.Undo()
 }
 
+// Rollout plays random moves until termination and returns both the
+// numerical result and the move lists needed for RAVE/AMAF updates.
+//
+// Implementation details:
+//   - We record moves in wmoves/bmoves based on side-to-move at each step.
+//   - At the end, we translate termination into [0,1] from the leaf's perspective.
+//   - Finally, we rewind the board back to the leaf state.
 func (o *RaveGameOps) Rollout() *RaveGameResult {
 	var result mcts.Result = 0.5
-	var moveCount int = 0
+	moveCount := 0
 	leafIsWhite := o.board.Wtomove
 	wmoves := make([]chess.Move, 0, 128)
 	bmoves := make([]chess.Move, 0, 128)
@@ -139,33 +162,38 @@ func (o *RaveGameOps) Rollout() *RaveGameResult {
 		moves = o.board.GenerateLegalMoves()
 	}
 
-	// Game ended in checkmate
+	// Assign result for checkmate, else keep draw at 0.5.
 	if o.board.Termination() == chess.TerminationCheckmate {
-		// Ended on our turn, so we lost
 		if o.board.Wtomove == leafIsWhite {
 			result = 0.0
 		} else {
 			result = 1.0
 		}
 	}
-	// Else that's a draw, so no need to change the result
 
-	for i := moveCount - 1; i >= 0; i-- {
+	// Rewind the board back to the leaf state.
+	for range moveCount {
 		o.board.Undo()
 	}
 
 	return &RaveGameResult{
-		result: result, wtomove: leafIsWhite,
-		wmoves: wmoves, bmoves: bmoves,
+		result:  result,
+		wtomove: leafIsWhite,
+		wmoves:  wmoves,
+		bmoves:  bmoves,
 	}
 }
 
+// Reset allows resetting per-search state (none needed here).
 func (o *RaveGameOps) Reset() {}
 
+// SetRand is called once per worker to inject a thread-local RNG.
 func (o *RaveGameOps) SetRand(r *rand.Rand) {
 	o.random = r
 }
 
+// Clone returns a deep copy of the operations object for worker threads.
+// Each worker receives its own board instance to mutate independently.
 func (o *RaveGameOps) Clone() mcts.GameOperations[chess.Move, *mcts.RaveStats, *RaveGameResult] {
 	return &RaveGameOps{
 		board: o.board.Clone(),

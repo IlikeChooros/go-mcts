@@ -11,6 +11,9 @@ An implementation of generic [Monte-Carlo Tree Search](https://en.wikipedia.org/
 - Vast limiting support, including: time, memory and depth
 - Allows custom backpropagation strategy (supports 2+ player games)
 - Generic API over move type and stats
+- Useful, not typical examples:
+  - Ultimate Tic-Tac-Toe with UCB1 and RAVE
+  - Chess with UCB1 and RAVE (using dragontoothmg engine for rules, move gen, make/undo)
 
 ## Requirements
 - Go 1.22+
@@ -84,6 +87,25 @@ Run an example
 go run ./examples/ultimate-tic-tac-toe/main.go
 # or
 go run ./examples/ultimate-tic-tac-toe/rave/main.go
+```
+
+**Chess**
+- UCB1: [/examples/chess/main.go](./examples/chess/main.go)
+- RAVE + real-time stats: [/examples/chess/rave/main.go](./examples/chess/rave/main.go)
+
+Run an example
+
+>[!NOTE]
+> Because chess move generation and rules are not implemented here, you need to get dragontoothmg:
+> ```sh
+> cd examples/chess
+> go get github.com/IlikeChooros/dragontoothmg
+> ```
+
+```sh
+go run ./main.go
+# or
+go run ./rave/main.go
 ```
 
 ## Concurrency and Performance

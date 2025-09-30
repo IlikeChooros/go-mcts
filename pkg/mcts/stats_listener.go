@@ -78,10 +78,7 @@ func (listener *StatsListener[T]) OnCycle(onCycle ListenerFunc[T]) *StatsListene
 }
 
 func (listener *StatsListener[T]) SetCycleInterval(n int) *StatsListener[T] {
-	if n < 1 {
-		n = 1
-	}
-	listener.nCycles = n
+	listener.nCycles = max(1, n)
 	return listener
 }
 
