@@ -21,8 +21,6 @@ type UtttMCTS struct {
 	ops *UtttOperations
 }
 
-type UtttNode mcts.NodeBase[uttt.PosType, *mcts.NodeStats]
-
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
 	uttt_ops := newUtttOps(position)
