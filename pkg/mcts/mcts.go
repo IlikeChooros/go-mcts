@@ -8,70 +8,8 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 )
-
-// Generalized Monte-Carlo Tree Search algorithm
-
-var VirtualLoss int32 = 0
-
-// Result of the rollout, should range from [0, 1] - 0 being loss from the leaf's node perspective
-// and 1 being a win
-type Result float64
-type MoveLike comparable
-type BestChildPolicy int
-
-const (
-	BestChildMostVisits BestChildPolicy = iota
-	BestChildWinRate
-)
-
-type MultithreadPolicy int
-
-const (
-	// Parallel building of the same game tree, protecting data from simultaneous writes
-	// using atomic operations.
-	MultithreadTreeParallel MultithreadPolicy = iota
-
-	// This will spawn multiple threads (specified by Limits.NThreads) that will
-	// build independent game trees in parallel. Note that the listener will be called
-	// only on the main thread, so the evaluation and pv will be inaccurate until
-	// the results are merged after the search is done.
-	MultithreadRootParallel
-)
-
-// Will be called, when we choose this node, as it is the most promising to expand
-// Warning: when using NodeStats fields, must use atomic operations (Load, Store)
-// since the search may be multi-threaded (tree parallelized)
-type SelectionPolicy[T MoveLike, S NodeStatsLike] func(parent, root *NodeBase[T, S]) *NodeBase[T, S]
-
-type GameResult any
-
-type GameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
-	// Generate moves here, and add them as children to given node
-	ExpandNode(parent *NodeBase[T, S]) uint32
-	// Make a move on the internal position definition, with given
-	// signature value (move)
-	Traverse(T)
-	// Go back up 1 time in the game tree (undo previous move, which was played in traverse)
-	BackTraverse()
-	// Function to make the playout, until terminal node is reached,
-	// in case of UTTT, play random moves, until we reach draw/win/loss
-	Rollout() R
-	// Reset game state to current internal position, called after changing
-	// position, for example using SetNotation function in engine
-	Reset()
-	// Clone itself, without any shared memory with the other object
-	Clone() GameOperations[T, S, R]
-}
-
-// Random-based rollout
-type RandGameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
-	GameOperations[T, S, R]
-	// Sets the random genertor
-	SetRand(*rand.Rand)
-}
 
 type TreeStats struct {
 	// size     atomic.Int32
@@ -119,7 +57,7 @@ func NewMTCS[T MoveLike, S NodeStatsLike, R GameResult](
 
 	// If that's random-based playouts, attach random number generator
 	if rg, ok := operations.(RandGameOperations[T, S, R]); ok {
-		rg.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
+		rg.SetRand(rand.New(rand.NewSource(SeedGeneratorFn())))
 	}
 
 	// Expand the root node, by default
@@ -286,6 +224,7 @@ func (mcts *MCTS[T, S, R]) MakeMove(move T) {
 	oldRoot := mcts.Root
 	mcts.Root = newRoot
 	mcts.size.Store(uint32(countTreeNodes(newRoot)))
+	mcts.maxdepth.Store(max(0, int32(mcts.MaxDepth()-1)))
 
 	// Detach the new root from its parent
 	newRoot.Parent = nil
@@ -407,7 +346,7 @@ type PvResult[T MoveLike, S NodeStatsLike] struct {
 	Draw     bool
 }
 
-// Returns 'pvCount' best move lines
+// Returns 'pvCount' best move lines, specified in the limits
 func (mcts *MCTS[T, S, R]) MultiPv(policy BestChildPolicy) []PvResult[T, S] {
 	if mcts.Root == nil {
 		return nil
@@ -489,7 +428,7 @@ func (mcts *MCTS[T, S, R]) PvNodes(root *NodeBase[T, S], policy BestChildPolicy,
 	return pv, mate
 }
 
-// Get the pricipal variation, but only the moves
+// Get the pricipal variation, but only the moves, returns (moves, mate, draw)
 func (mcts *MCTS[T, S, R]) Pv(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]T, bool, bool) {
 	if root == nil {
 		return nil, false, false

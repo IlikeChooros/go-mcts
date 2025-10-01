@@ -58,17 +58,11 @@ func main() {
 	listener := mcts.NewStatsListener[dragontoothmg.Move]()
 	listener.
 		OnDepth(func(lts mcts.ListenerTreeStats[dragontoothmg.Move]) {
-			if len(lts.Lines) == 0 {
-				return
-			}
 			main := lts.Lines[0] // principal variation (best line so far)
 			fmt.Printf("info eval %.2f depth %d cps %d cycles %d pv %s\n",
 				main.Eval, lts.Maxdepth, lts.Cps, lts.Cycles, MovesToString(main.Moves))
 		}).
 		OnStop(func(lts mcts.ListenerTreeStats[dragontoothmg.Move]) {
-			if len(lts.Lines) == 0 {
-				return
-			}
 			fmt.Printf("bestmove %s\n", lts.Lines[0].BestMove.String())
 		})
 

@@ -3,7 +3,6 @@ package mcts
 import (
 	"math/rand"
 	"runtime"
-	"time"
 )
 
 // Use when started multi-threaded search and want it to synchronize with this thread
@@ -75,21 +74,20 @@ func mergeResult[T MoveLike, S NodeStatsLike](root *NodeBase[T, S], other *NodeB
 func (mcts *MCTS[T, S, R]) SearchMultiThreaded(ops GameOperations[T, S, R]) {
 	mcts.setupSearch()
 	threads := max(1, mcts.Limiter.Limits().NThreads)
-	VirtualLoss = 2
 
-	// Create a slice of root nodes
+	// Create a slice ofd root nodes
 	mcts.roots = make([]*NodeBase[T, S], threads)
-	for i := 0; i < threads; i++ {
-		if i == 0 || mcts.multithreadPolicy == MultithreadTreeParallel {
+	for id := range mcts.roots {
+		if id == mainThreadId || mcts.multithreadPolicy == MultithreadTreeParallel {
 			// All threads will work on the same root node
-			mcts.roots[i] = mcts.Root
+			mcts.roots[id] = mcts.Root
 		} else if mcts.multithreadPolicy == MultithreadRootParallel {
 			// Each thread (apart from the main one) will have it's own copy of the root node
-			mcts.roots[i] = mcts.Root.Clone()
+			mcts.roots[id] = mcts.Root.Clone()
 		}
 	}
 
-	for id := range threads {
+	for id := range mcts.roots {
 		mcts.wg.Add(1)
 
 		// Start the search in a separate goroutine
@@ -126,15 +124,15 @@ func (mcts *MCTS[T, S, R]) setupSearch() {
 // Until runs out of the allocated time, nodes, or memory.
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
 func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S, R], threadId int) {
-	threadRand := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadId)))
+	threadRand := rand.New(rand.NewSource(SeedGeneratorFn() + int64(threadId)))
 
 	// For random (light) playouts, set the random number generator
 	if rg, ok := ops.(RandGameOperations[T, S, R]); ok {
-		rg.SetRand(rand.New(rand.NewSource(time.Now().Unix())))
+		rg.SetRand(threadRand)
 	}
 
 	if root.Terminal() || len(root.Children) == 0 {
-		if threadId == 0 {
+		if threadId == mainThreadId {
 			mcts.invokeListener(mcts.listener.onStop)
 		}
 		mcts.wg.Done()
@@ -154,14 +152,14 @@ func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S,
 		mcts.cycles.Add(1)
 		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
 		// Invoke the 'onCycle' listener
-		if threadId == 0 && mcts.listener.onCycle != nil &&
+		if threadId == mainThreadId && mcts.listener.onCycle != nil &&
 			mcts.Root.Stats.Visits()%int32(mcts.listener.nCycles) == 0 {
 			mcts.listener.onCycle(toListenerStats(mcts))
 		}
 	}
 
 	// Evaluate the stop reason, only main thread will do this
-	if threadId == 0 {
+	if threadId == mainThreadId {
 		mcts.Limiter.EvaluateStopReason(mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
 	}
 
@@ -169,7 +167,7 @@ func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S,
 	mcts.Limiter.Stop()
 
 	// Make sure only 1 thread calls this
-	if threadId == 0 {
+	if threadId == mainThreadId {
 		mcts.invokeListener(mcts.listener.onStop)
 		mcts.wg.Done()
 
@@ -221,7 +219,7 @@ func (mcts *MCTS[T, S, R]) Selection(root *NodeBase[T, S], ops GameOperations[T,
 		// Already set
 		if node.Expanded() {
 			// Select child at random
-			node = &node.Children[threadRand.Int31n(int32(len(node.Children)))]
+			node = &node.Children[threadRand.Int31()%int32(len(node.Children))]
 			// Traverse to this child
 			ops.Traverse(node.Move)
 			depth++

@@ -75,14 +75,11 @@ type RaveBetaFnType func(playouts, playoutsContatingMove int32) float64
 
 func RaveDSilver(playouts, playoutsContatingMove int32) float64 {
 	const (
-		b      = 0.5
+		b      = 0.1
 		factor = 4 * b * b
 	)
 	return float64(playouts) / (float64(playouts+playoutsContatingMove) + factor*float64(playouts*playoutsContatingMove))
 }
-
-// Customizable beta function for the rave selection, by default uses D. Silver solution
-var RaveBetaFunction RaveBetaFnType = RaveDSilver
 
 // Rapid Action Value Estimation (RAVE) selection policy
 // Reference: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
@@ -117,6 +114,7 @@ func RAVE[T MoveLike, S RaveStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 		b := 0.0
 		rf := 0.0
 		if pcm := child.Stats.RavePCM(); pcm > 0 {
+			// specified in vars.go
 			b = RaveBetaFunction(actualVisits, pcm)
 			rf = float64(child.Stats.RaveOCM()) / float64(pcm)
 		}

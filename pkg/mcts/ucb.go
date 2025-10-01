@@ -2,13 +2,6 @@ package mcts
 
 import "math"
 
-var ExplorationParam float64 = 0.75
-
-// Set the exploration parameter used in UCB1 formula
-func SetExplorationParam(c float64) {
-	ExplorationParam = max(0.0, c)
-}
-
 // Default node selection policy (upper confidence bound)
 func UCB1[T MoveLike, S NodeStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 

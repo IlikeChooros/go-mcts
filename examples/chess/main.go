@@ -10,7 +10,7 @@ What it shows:
 - Constructing a chess-specific MCTS instance (UCB1 + default backprop).
 - Setting time/thread limits for the search.
 - Tuning the UCB exploration constant (c).
-- Subscribing a listener to print UCI-like “info ... pv ...” lines and “bestmove ...”.
+- Subscribing a listener to print UCI-like "info ... pv ..." lines and "bestmove ...".
 */
 
 import (

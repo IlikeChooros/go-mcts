@@ -24,9 +24,12 @@ func main() {
 	fmt.Println("Ultimate Tic Tac Toe MCTS UCB1 Example")
 
 	// Create a new UTTT MCTS instance
+	// - UCB1 selection policy
+	// - NodeStats for per-node visits/outcomes
+	// - Default 2-player zero-sum backpropagation
 	tree := ucb.NewUtttMCTS(*uttt.NewPosition())
 
-	// Set search parameters
+	// Set search limits; 2 seconds, 4 threads
 	tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(4))
 
 	// Run the search, will block until done
