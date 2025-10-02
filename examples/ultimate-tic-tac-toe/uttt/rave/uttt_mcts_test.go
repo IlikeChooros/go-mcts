@@ -110,14 +110,14 @@ func TestMCTSBackpropagation(t *testing.T) {
 	})
 
 	// Check statistics
-	if child.Stats.Visits() != 1 {
-		t.Errorf("Child visits should be 1, got %d", child.Stats.Visits())
+	if child.Stats.N() != 1 {
+		t.Errorf("Child visits should be 1, got %d", child.Stats.N())
 	}
-	if int(child.Stats.Outcomes()) != 1 {
-		t.Errorf("Child wins should be 1, got %f", child.Stats.Outcomes())
+	if int(child.Stats.Q()) != 1 {
+		t.Errorf("Child wins should be 1, got %f", child.Stats.Q())
 	}
-	if tree.Root.Stats.Visits() != 2 { // Original 1 + 1 from backprop
-		t.Errorf("Root visits should be 2, got %d", tree.Root.Stats.Visits())
+	if tree.Root.Stats.N() != 2 { // Original 1 + 1 from backprop
+		t.Errorf("Root visits should be 2, got %d", tree.Root.Stats.N())
 	}
 	// Position should be restored
 	if pos.Notation() != originalNotation {
@@ -142,7 +142,7 @@ func TestMCTSSearch(t *testing.T) {
 	mcts.Search()
 
 	// Check that search actually ran
-	if mcts.Root.Stats.Visits() == 0 {
+	if mcts.Root.Stats.N() == 0 {
 		t.Error("Root should have been visited during search")
 	}
 

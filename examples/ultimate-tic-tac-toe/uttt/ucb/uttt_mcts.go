@@ -72,7 +72,7 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 	result := uttt.SearchResult{
 		Cps:    tree.Cps(),
 		Depth:  tree.MaxDepth(),
-		Cycles: tree.Root.Stats.Visits(),
+		Cycles: tree.Root.Stats.N(),
 		Lines:  make([]uttt.EngineLine, len(multipv)),
 		Turn:   tree.ops.rootSide,
 		Size:   tree.Size(),
@@ -100,10 +100,10 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 			}
 		} else {
 			line.ScoreType = uttt.ValueScore
-			if pvResult.Root.Stats.Visits() == 0 {
+			if pvResult.Root.Stats.N() == 0 {
 				line.Value = 50
 			} else {
-				line.Value = int(100 * pvResult.Root.Stats.AvgOutcome())
+				line.Value = int(100 * pvResult.Root.Stats.AvgQ())
 			}
 		}
 	}

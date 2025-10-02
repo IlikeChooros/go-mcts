@@ -33,8 +33,8 @@ func mergeResult[T MoveLike, S NodeStatsLike](root *NodeBase[T, S], other *NodeB
 	}
 
 	// Merge the counters
-	root.Stats.AddVvl(other.Stats.Visits(), other.Stats.VirtualLoss())
-	root.Stats.AddOutcome(other.Stats.Outcomes())
+	root.Stats.AddVvl(other.Stats.N(), other.Stats.VirtualLoss())
+	root.Stats.AddQ(other.Stats.Q())
 
 	// Merge children
 	otherLen := len(other.Children)
@@ -75,13 +75,13 @@ func (mcts *MCTS[T, S, R]) SearchMultiThreaded(ops GameOperations[T, S, R]) {
 	mcts.setupSearch()
 	threads := max(1, mcts.Limiter.Limits().NThreads)
 
-	// Create a slice ofd root nodes
+	// Create a slice of root nodes
 	mcts.roots = make([]*NodeBase[T, S], threads)
 	for id := range mcts.roots {
-		if id == mainThreadId || mcts.multithreadPolicy == MultithreadTreeParallel {
+		if id == mainThreadId || mcts.multithreadPolicy != MultithreadRootParallel {
 			// All threads will work on the same root node
 			mcts.roots[id] = mcts.Root
-		} else if mcts.multithreadPolicy == MultithreadRootParallel {
+		} else {
 			// Each thread (apart from the main one) will have it's own copy of the root node
 			mcts.roots[id] = mcts.Root.Clone()
 		}
@@ -153,7 +153,7 @@ func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S,
 		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
 		// Invoke the 'onCycle' listener
 		if threadId == mainThreadId && mcts.listener.onCycle != nil &&
-			mcts.Root.Stats.Visits()%int32(mcts.listener.nCycles) == 0 {
+			mcts.Root.Stats.N()%int32(mcts.listener.nCycles) == 0 {
 			mcts.listener.onCycle(toListenerStats(mcts))
 		}
 	}

@@ -43,7 +43,7 @@ func SetSeedGeneratorFn(f SeedGeneratorFnType) {
 
 const (
 	// Parallel building of the same game tree, protecting data from simultaneous writes
-	// using atomic operations.
+	// using atomic operations. Best approach for most cases.
 	MultithreadTreeParallel MultithreadPolicy = iota
 
 	// This will spawn multiple threads (specified by Limits.NThreads) that will

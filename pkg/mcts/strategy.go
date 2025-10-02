@@ -31,7 +31,7 @@ func (b DefaultBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, Result]
 
 		result = 1.0 - result // switch the result
 		// Add the outcome
-		node.Stats.AddOutcome(result)
+		node.Stats.AddQ(result)
 
 		// Backpropagate
 		node = node.Parent

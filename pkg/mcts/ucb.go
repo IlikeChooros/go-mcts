@@ -13,7 +13,7 @@ func UCB1[T MoveLike, S NodeStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 
 	max := float64(-1)
 	index := 0
-	lnParentVisits := math.Log(float64(parent.Stats.Visits()))
+	lnParentVisits := math.Log(float64(parent.Stats.N()))
 	var child *NodeBase[T, S]
 	var actualVisits, visits, vl int32
 	var wins Result
@@ -31,7 +31,7 @@ func UCB1[T MoveLike, S NodeStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 			return child
 		}
 
-		wins = child.Stats.Outcomes()
+		wins = child.Stats.Q()
 
 		// UCB 1 : wins/visits + C * sqrt(ln(parent_visits)/visits)
 		// ucb1 = epliotation + exploration

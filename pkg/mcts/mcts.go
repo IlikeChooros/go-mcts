@@ -265,7 +265,7 @@ func (mcts *MCTS[T, S, R]) RootMove() T {
 // Current evaluation of the position
 func (mcts *MCTS[T, S, R]) RootScore() Result {
 	if bestChild := mcts.BestChild(mcts.Root, BestChildMostVisits); bestChild != nil {
-		return bestChild.Stats.Outcomes() / Result(bestChild.Stats.Visits())
+		return bestChild.Stats.Q() / Result(bestChild.Stats.N())
 	}
 	return Result(math.NaN())
 }
@@ -283,12 +283,12 @@ func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolic
 	// } else {
 	// 	fmt.Print("Enemy's turn")
 	// }
-	// fmt.Printf(" wr=%0.2f\n", float64(node.Stats.Outcomes())/float64(node.Stats.Visits()))
+	// fmt.Printf(" wr=%0.2f\n", float64(node.Stats.Q())/float64(node.Stats.N()))
 	// for i := range node.Children {
 	// 	ch := &node.Children[i]
 	// 	fmt.Printf("%d. %v v=%d (wr=%.2f)\n",
-	// 		i+1, ch.Move, ch.Stats.Visits(),
-	// 		float64(ch.Stats.Outcomes())/float64(ch.Stats.Visits()),
+	// 		i+1, ch.Move, ch.Stats.N(),
+	// 		float64(ch.Stats.Q())/float64(ch.Stats.N()),
 	// 	)
 	// }
 
@@ -312,7 +312,7 @@ func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolic
 
 		// Get max visits out the children
 		for i := 0; i < len(node.Children); i++ {
-			maxVisits = max(int(node.Children[i].Stats.Visits()), maxVisits)
+			maxVisits = max(int(node.Children[i].Stats.N()), maxVisits)
 		}
 
 		// Go through the children
@@ -322,7 +322,7 @@ func (mcts *MCTS[T, S, R]) BestChild(node *NodeBase[T, S], policy BestChildPolic
 			if real > minVisitsThreshold && real > int32(minVisitsPercentageThreshold*float64(maxVisits)) {
 
 				// We optimize the winning chances, looking from the root's perspective
-				var winRate float64 = float64(child.Stats.Outcomes()) / float64(child.Stats.Visits())
+				var winRate float64 = float64(child.Stats.Q()) / float64(child.Stats.N())
 
 				if winRate > bestWinRate {
 					bestWinRate = winRate
@@ -361,7 +361,7 @@ func (mcts *MCTS[T, S, R]) MultiPv(policy BestChildPolicy) []PvResult[T, S] {
 	}
 
 	slices.SortFunc(root_nodes, func(a *NodeBase[T, S], b *NodeBase[T, S]) int {
-		va, vb := a.Stats.Visits(), b.Stats.Visits()
+		va, vb := a.Stats.N(), b.Stats.N()
 		if va < vb {
 			return 1
 		} else if va > vb {
@@ -442,5 +442,5 @@ func (mcts *MCTS[T, S, R]) Pv(root *NodeBase[T, S], policy BestChildPolicy, incl
 		pv[i] = node.Move
 	}
 
-	return pv, mate, (mate && node.Stats.AvgOutcome() == 0.5)
+	return pv, mate, (mate && node.Stats.AvgQ() == 0.5)
 }

@@ -16,69 +16,69 @@ type RaveStatsLike interface {
 	NodeStatsLike
 
 	// Outcomes contating node's move
-	RaveOCM() Result
-	RaveRawOCM() int32
-	// # Playouts contating node's move
-	RavePCM() int32
+	QRAVE() Result
+	RawQRAVE() int32
+	// Playouts contating node's move
+	NRAVE() int32
 	// Add new outcome, that contains node's move
-	AddRaveOCM(Result)
+	AddQRAVE(Result)
 	// Increment playouts with
-	AddRavePCM(int32)
+	AddNRAVE(int32)
 }
 
-// Added playouts and outcomes contating node's move
+// Added playouts and outcomes contating node's move, holds AMAF statistics
 type RaveStats struct {
 	NodeStats
 
 	// Float64 value with 10^-3 percision, stored as uint64
-	outcomesContainingMove int32
+	q_rave int32
 
 	// Number of nodes below this node's parent, containing this node's move
-	playoutsContainingMove int32
+	n_rave int32
 }
 
 func (r *RaveStats) Clone() NodeStatsLike {
 	return &RaveStats{
 		NodeStats: NodeStats{
-			sumOutcomes: atomic.LoadUint64(&r.sumOutcomes),
-			visits:      atomic.LoadInt32(&r.visits),
+			q:           atomic.LoadUint64(&r.q),
+			n:           atomic.LoadInt32(&r.n),
 			virtualLoss: atomic.LoadInt32(&r.virtualLoss),
 		},
-		outcomesContainingMove: r.RaveRawOCM(),
-		playoutsContainingMove: r.RavePCM(),
+		q_rave: r.RawQRAVE(),
+		n_rave: r.NRAVE(),
 	}
 }
 
-func (r *RaveStats) RaveOCM() Result {
-	return Result(atomic.LoadInt32(&r.outcomesContainingMove) / 1e3)
+func (r *RaveStats) QRAVE() Result {
+	return Result(atomic.LoadInt32(&r.q_rave)) / Result(1e3)
 }
 
-func (r *RaveStats) RaveRawOCM() int32 {
-	return atomic.LoadInt32(&r.outcomesContainingMove)
+func (r *RaveStats) RawQRAVE() int32 {
+	return atomic.LoadInt32(&r.q_rave)
 }
 
-func (r *RaveStats) RavePCM() int32 {
-	return atomic.LoadInt32(&r.playoutsContainingMove)
+func (r *RaveStats) NRAVE() int32 {
+	return atomic.LoadInt32(&r.n_rave)
 }
 
-func (r *RaveStats) AddRaveOCM(result Result) {
-	atomic.AddInt32(&r.outcomesContainingMove, int32(result*1e3))
+func (r *RaveStats) AddQRAVE(result Result) {
+	atomic.AddInt32(&r.q_rave, int32(result*1e3))
 }
 
-func (r *RaveStats) AddRavePCM(playouts int32) {
-	atomic.AddInt32(&r.playoutsContainingMove, playouts)
+func (r *RaveStats) AddNRAVE(playouts int32) {
+	atomic.AddInt32(&r.n_rave, playouts)
 }
 
 // Source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
-// function should be close to one and to zero for relatively small and relatively big 'playouts' and 'playoutsContatingMove' respectively.
-type RaveBetaFnType func(playouts, playoutsContatingMove int32) float64
+// function should be close to one and to zero for relatively small and relatively big 'n' and 'n_rave' respectively.
+type RaveBetaFnType func(n, n_rave int32) float64
 
-func RaveDSilver(playouts, playoutsContatingMove int32) float64 {
+func RaveDSilver(n, n_rave int32) float64 {
 	const (
 		b      = 0.1
 		factor = 4 * b * b
 	)
-	return float64(playouts) / (float64(playouts+playoutsContatingMove) + factor*float64(playouts*playoutsContatingMove))
+	return float64(n) / (float64(n+n_rave) + factor*float64(n*n_rave))
 }
 
 // Rapid Action Value Estimation (RAVE) selection policy
@@ -96,7 +96,7 @@ func RAVE[T MoveLike, S RaveStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 
 	max := float64(-1)
 	index := 0
-	lnParentVisits := math.Log(float64(parent.Stats.Visits()))
+	lnParentVisits := math.Log(float64(parent.Stats.N()))
 
 	for i := 0; i < len(parent.Children); i++ {
 
@@ -110,16 +110,16 @@ func RAVE[T MoveLike, S RaveStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T
 			return child
 		}
 
-		q := float64(child.Stats.Outcomes()) / float64(visits)
+		q := float64(child.Stats.Q()) / float64(visits)
 		b := 0.0
-		rf := 0.0
-		if pcm := child.Stats.RavePCM(); pcm > 0 {
+		amafq := 0.0
+		if pcm := child.Stats.NRAVE(); pcm > 0 {
 			// specified in vars.go
 			b = RaveBetaFunction(actualVisits, pcm)
-			rf = float64(child.Stats.RaveOCM()) / float64(pcm)
+			amafq = float64(child.Stats.QRAVE()) / float64(pcm)
 		}
 
-		ucb := (1.0-b)*q + b*rf +
+		ucb := (1.0-b)*q + b*amafq +
 			ExplorationParam*math.Sqrt(lnParentVisits/float64(visits))
 
 		if ucb > max {
@@ -192,7 +192,7 @@ func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *
 
 		v = 1.0 - v // switch the result
 		// Add the outcome
-		node.Stats.AddOutcome(v)
+		node.Stats.AddQ(v)
 
 		// Reverse virtual loss for non-root
 		if node.Parent != nil {
@@ -204,8 +204,8 @@ func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *
 				// Check if the child contains a move from the playout
 				ch = &node.Parent.Children[i]
 				if slices.Contains(mvs, ch.Move) {
-					ch.Stats.AddRaveOCM(v)
-					ch.Stats.AddRavePCM(1)
+					ch.Stats.AddQRAVE(v)
+					ch.Stats.AddNRAVE(1)
 				}
 			}
 

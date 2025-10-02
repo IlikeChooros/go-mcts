@@ -26,7 +26,7 @@ func toListenerStats[T MoveLike, S NodeStatsLike, R GameResult](tree *MCTS[T, S,
 		lines[i] = SearchLine[T]{
 			BestMove: pv[i].Root.Move,
 			Moves:    pv[i].Pv,
-			Eval:     float64(pv[i].Root.Stats.AvgOutcome()),
+			Eval:     float64(pv[i].Root.Stats.AvgQ()),
 			Terminal: pv[i].Terminal,
 			Draw:     pv[i].Draw,
 		}
@@ -35,7 +35,7 @@ func toListenerStats[T MoveLike, S NodeStatsLike, R GameResult](tree *MCTS[T, S,
 	return ListenerTreeStats[T]{
 		Lines:      lines,
 		Maxdepth:   int(tree.MaxDepth()),
-		Cycles:     int(tree.Root.Stats.Visits()),
+		Cycles:     int(tree.Root.Stats.N()),
 		TimeMs:     int(tree.Limiter.Elapsed()),
 		Cps:        tree.Cps(),
 		Size:       tree.Size(),

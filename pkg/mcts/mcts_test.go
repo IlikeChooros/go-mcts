@@ -25,11 +25,11 @@ func (d DummyOps) Reset()           {}
 func (d *DummyOps) Traverse(m Move) { d.depth++ }
 func (d *DummyOps) BackTraverse()   { d.depth-- }
 
-func (d DummyOps) ExpandNode(parent *NodeBase[Move, *NodeStats]) uint32 {
+func (d *DummyOps) ExpandNode(parent *NodeBase[Move, *NodeStats]) uint32 {
 	// Always add 'branchFactor' children
 	parent.Children = make([]NodeBase[Move, *NodeStats], branchFactor)
 	for i := range parent.Children {
-		move := Move(d.rand.Intn(100))
+		move := Move(i)
 		parent.Children[i] = *NewBaseNode(parent, move, d.depth >= 8, &NodeStats{})
 	}
 	return branchFactor
@@ -61,11 +61,11 @@ type DummyMCTS struct {
 	ops *DummyOps
 }
 
-func NewDummyMCTS() *DummyMCTS {
+func NewDummyMCTS(policy MultithreadPolicy) *DummyMCTS {
 	ops := &DummyOps{}
 	return &DummyMCTS{
 		MCTS: *NewMTCS(
-			UCB1, ops, 0, MultithreadTreeParallel,
+			UCB1, ops, 0, policy,
 			&NodeStats{}, DefaultBackprop[Move, *NodeStats, Result]{},
 		),
 		ops: ops,
@@ -82,7 +82,7 @@ func TestMain(m *testing.M) {
 }
 
 func GetDummyMCTS() *DummyMCTS {
-	mcts := NewDummyMCTS()
+	mcts := NewDummyMCTS(MultithreadTreeParallel)
 	mcts.Limiter.SetLimits(DefaultLimits().SetCycles(10000))
 	mcts.SearchMultiThreaded(mcts.ops)
 	mcts.Synchronize()
@@ -103,7 +103,7 @@ func TestDummySearch(t *testing.T) {
 }
 
 func TestDummySearchWithListener(t *testing.T) {
-	mcts := NewDummyMCTS()
+	mcts := NewDummyMCTS(MultithreadTreeParallel)
 	mcts.SetLimits(DefaultLimits().SetCycles(10000).SetThreads(4))
 	listener := NewStatsListener[Move]()
 	listener.
@@ -130,6 +130,20 @@ func TestDummySearchWithListener(t *testing.T) {
 	if len(pv) <= 2 {
 		t.Fatalf("No pv found after search, %v", pv)
 	}
+}
+
+func TestDummySearchRootParallel(t *testing.T) {
+	mcts := NewDummyMCTS(MultithreadRootParallel)
+	mcts.Limiter.SetLimits(DefaultLimits().SetCycles(10000).SetThreads(4))
+	mcts.SearchMultiThreaded(mcts.ops)
+	mcts.Synchronize()
+
+	if len(mcts.Root.Children) == 0 {
+		t.Fatal("No children found after search")
+	}
+
+	pv, _, _ := mcts.Pv(mcts.Root, BestChildMostVisits, false)
+	t.Logf("eval %.2f cps %d cycles %d pv %v", mcts.RootScore(), mcts.Cps(), mcts.Cycles(), pv)
 }
 
 // Actual unit tests for MCTS components, like Node cloning, UCB1 calculation, etc.
@@ -203,7 +217,7 @@ func deepCompare(n1, n2 *NodeBase[Move, *NodeStats]) bool {
 	if n1.Flags != n2.Flags {
 		return false
 	}
-	if n1.Stats.Visits() != n2.Stats.Visits() || n1.Stats.RawOutcomes() != n2.Stats.RawOutcomes() {
+	if n1.Stats.N() != n2.Stats.N() || n1.Stats.RawQ() != n2.Stats.RawQ() {
 		return false
 	}
 	if len(n1.Children) != len(n2.Children) {
