@@ -42,27 +42,36 @@ func main() {
 	// Customize the RAVE beta function (influence of AMAF vs. standard Q).
 	// Smaller b makes AMAF decay faster as visits grow.
 	// This is a variant of the function discussed by D. Silver.
-	mcts.RaveBetaFunction = func(playouts, playoutsContatingMove int32) float64 {
-		const (
-			b      = 0.1       // controls the AMAF weight decay
-			factor = 4 * b * b // smoothing factor
-		)
-		return float64(playouts) / (float64(playouts+playoutsContatingMove) + factor*float64(playouts*playoutsContatingMove))
-	}
+	mcts.SetRaveBetaFunction(func(n, n_rave int32) float64 {
+		// const (
+		// b      = 0.1       // controls the AMAF weight decay
+		// factor = 4 * b * b // smoothing factor
+		// )
+		// return float64(n) / (float64(n+n_rave) + factor*float64(n*n_rave))
+
+		// Alternative: linear decay until a threshold, then 0.
+		const threshold = 10000
+		if n >= threshold {
+			return 0
+		}
+		return float64(threshold-n) / float64(threshold)
+	})
+	mcts.SetExplorationParam(0.2) // UCB exploration parameter
 
 	// Set search limits: 8 threads, 2000 ms. The search call blocks until done.
-	ucb.SetLimits(mcts.DefaultLimits().SetThreads(8).SetMovetime(2000))
+	ucb.SetLimits(mcts.DefaultLimits().SetThreads(4).SetCycles(60000))
 
 	// Attach a stats listener to stream live search information.
 	// We print UCI-style info lines on depth updates and final bestmove on stop.
 	listener := mcts.NewStatsListener[dragontoothmg.Move]()
 	listener.
 		OnDepth(func(lts mcts.ListenerTreeStats[dragontoothmg.Move]) {
-			main := lts.Lines[0] // principal variation (best line so far)
 			fmt.Printf("info eval %.2f depth %d cps %d cycles %d pv %s\n",
-				main.Eval, lts.Maxdepth, lts.Cps, lts.Cycles, MovesToString(main.Moves))
+				lts.Lines[0].Eval, lts.Maxdepth, lts.Cps, lts.Cycles, MovesToString(lts.Lines[0].Moves))
 		}).
 		OnStop(func(lts mcts.ListenerTreeStats[dragontoothmg.Move]) {
+			fmt.Printf("info eval %.2f depth %d cps %d cycles %d pv %s\n",
+				lts.Lines[0].Eval, lts.Maxdepth, lts.Cps, lts.Cycles, MovesToString(lts.Lines[0].Moves))
 			fmt.Printf("bestmove %s\n", lts.Lines[0].BestMove.String())
 		})
 

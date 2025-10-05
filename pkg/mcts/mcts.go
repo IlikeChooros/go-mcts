@@ -18,6 +18,78 @@ type TreeStats struct {
 	cycles   atomic.Uint32
 }
 
+type MCTSLike[T MoveLike, S NodeStatsLike, R GameResult] interface {
+	// Get the size of the tree
+	Size() uint32
+	// Get the size of the tree (by counting)
+	Count() int
+	// Returns approximation of memory usage of the tree structure
+	MemoryUsage() uint32
+	// Get cycles per second statistic
+	Cps() uint32
+	// Get the reason why the search was stopped, valid after search ends
+	StopReason() StopReason
+	// Maxiumum depth reach during the search, note that usually MaxDepth != len(pv)
+	MaxDepth() int
+	// Total number of 'iterations', 'cycles', 'simluations' ran during the search
+	Cycles() int
+	// The number of times a node was chosen, but it was already being expanded.
+	// Resulting in a 'waiting' state of the search thread
+	CollisionCount() int32
+	// Number of all collisions in the tree divided by the number of all cycles,
+	// for more info see CollisionCount
+	CollisionFactor() float64
+	// Is the search currently running
+	IsRunning() bool
+	// Stop the search
+	Stop()
+	// Adds custom context to the limiter, enabling cancellation through it
+	//
+	// Example:
+	//
+	//	ctx, cancel := context.WithCancel(context.Background())
+	//
+	//	tree.SetContext(ctx)
+	//	go func() {
+	//	    time.Sleep(2 * time.Second)
+	//	    cancel() // Cancel the search after 2 seconds
+	//	}()
+	//
+	//	tree.Search()
+	SetContext(ctx context.Context)
+	// Set search limits
+	SetLimits(limits *Limits)
+	// Get current search limits
+	Limits() *Limits
+	// Get the strategy used by this MCTS instance
+	Strategy() StrategyLike[T, S, R]
+	// Reset the listener functions
+	ResetListener()
+	// Get the stats listener
+	StatsListener() *StatsListener[T]
+	// Set a custom stats listener
+	SetListener(listener StatsListener[T])
+	// Set multithreading policy
+	SetMultithreadPolicy(policy MultithreadPolicy)
+	// Tries to make given 'move' a new root, if it failes, does nothing
+	MakeMove(move T)
+	// 'the best move' in the position
+	RootMove() T
+	// Current evaluation of the position
+	RootScore() Result
+	// Return best child, based on the policy
+	BestChild(node *NodeBase[T, S], policy BestChildPolicy) *NodeBase[T, S]
+	// Get the principal variation (ie. the best sequence of moves)
+	// from given starting 'root' node, based on given best child policy
+	PvNodes(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]*NodeBase[T, S], bool)
+	// Get the pricipal variation, but only the moves, returns (moves, mate, draw)
+	Pv(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]T, bool, bool)
+	// Returns 'pvCount' best move lines, specified in the limits
+	MultiPv(policy BestChildPolicy) []PvResult[T, S]
+	// Reset the tree & update game ops state
+	Reset(ops GameOperations[T, S, R], isTerminated bool, defaultStats S)
+}
+
 type MCTS[T MoveLike, S NodeStatsLike, R GameResult] struct {
 	TreeStats
 	listener          *StatsListener[T]
