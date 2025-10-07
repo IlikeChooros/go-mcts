@@ -74,7 +74,7 @@ type MCTSLike[T MoveLike, S NodeStatsLike, R GameResult] interface {
 	// Tries to make given 'move' a new root, if it failes, does nothing
 	MakeMove(move T)
 	// 'the best move' in the position
-	RootMove() T
+	BestMove() T
 	// Current evaluation of the position
 	RootScore() Result
 	// Return best child, based on the policy
@@ -273,7 +273,7 @@ func (mcts *MCTS[T, S, R]) MemoryUsage() uint32 {
 }
 
 // Tries to make given 'move' a new root, if it failes, does nothing
-func (mcts *MCTS[T, S, R]) MakeMove(move T) {
+func (mcts *MCTS[T, S, R]) MakeMove(move T) bool {
 	// If the search is running, stop it first
 	if mcts.IsSearching() {
 		mcts.Stop()
@@ -290,7 +290,7 @@ func (mcts *MCTS[T, S, R]) MakeMove(move T) {
 	}
 
 	if newRoot == nil {
-		return
+		return false
 	}
 
 	oldRoot := mcts.Root
@@ -303,6 +303,7 @@ func (mcts *MCTS[T, S, R]) MakeMove(move T) {
 
 	// Clear the children of the old root, to make them available for GC
 	oldRoot.Children = nil
+	return true
 }
 
 // Remove previous tree & update game ops state
@@ -326,7 +327,7 @@ func (mcts *MCTS[T, S, R]) Reset(ops GameOperations[T, S, R], isTerminated bool,
 }
 
 // 'the best move' in the position
-func (mcts *MCTS[T, S, R]) RootMove() T {
+func (mcts *MCTS[T, S, R]) BestMove() T {
 	var signature T
 	if bestChild := mcts.BestChild(mcts.Root, BestChildMostVisits); bestChild != nil {
 		signature = bestChild.Move

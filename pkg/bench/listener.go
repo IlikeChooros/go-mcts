@@ -36,19 +36,13 @@ const (
 	_ListenerStatusFinished
 )
 
-type ListenerStats[T mcts.MoveLike] struct {
-	NGames        int
-	FinishedGames int
-	GameMoveNum   int
-	Moves         []T
-}
-
 type ListenerLike[T mcts.MoveLike] interface {
 	SetRow(row int)
 	OnGameStart()
-	OnMoveMade(stats ListenerStats[T])
-	OnFinishedGame(stats ListenerStats[T])
+	OnMoveMade(stats VersusWorkerInfo[T])
+	OnFinishedGame(stats VersusWorkerInfo[T])
 	OnFinishedWork()
+	Clone() ListenerLike[T]
 }
 
 type DefaultListener[T mcts.MoveLike] struct {
@@ -69,7 +63,7 @@ func (s _ListenerStatus) String() string {
 	}
 }
 
-func (d DefaultListener[T]) print(stats ListenerStats[T]) {
+func (d DefaultListener[T]) print(stats VersusWorkerInfo[T]) {
 
 	var etaStr string
 	if d.avgTime == 0 {
@@ -88,11 +82,11 @@ func (d *DefaultListener[T]) OnGameStart() {
 	d.gameStartTime = time.Now()
 }
 
-func (d DefaultListener[T]) OnMoveMade(stats ListenerStats[T]) {
+func (d DefaultListener[T]) OnMoveMade(stats VersusWorkerInfo[T]) {
 	d.print(stats)
 }
 
-func (d *DefaultListener[T]) OnFinishedGame(stats ListenerStats[T]) {
+func (d *DefaultListener[T]) OnFinishedGame(stats VersusWorkerInfo[T]) {
 	d.avgTime = time.Since(d.gameStartTime)
 	d.print(stats)
 }
@@ -104,4 +98,8 @@ func (d DefaultListener[T]) OnFinishedWork() {
 func (d *DefaultListener[T]) SetRow(n int) {
 	d.row = n
 	d.ansiLinePos = fmt.Sprintf(ANSI_CURSOR_POS, d.row, 0)
+}
+
+func (d *DefaultListener[T]) Clone() ListenerLike[T] {
+	return &DefaultListener[T]{row: d.row, ansiLinePos: d.ansiLinePos, gameStartTime: d.gameStartTime, avgTime: d.avgTime}
 }

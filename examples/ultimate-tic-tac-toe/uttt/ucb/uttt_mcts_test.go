@@ -253,7 +253,7 @@ func TestMCTSBestChild(t *testing.T) {
 	mcts.Search()
 
 	// Get best child
-	bestMove := mcts.RootMove()
+	bestMove := mcts.BestMove()
 
 	// Verify it's a legal move
 	legalMoves := pos.GenerateMoves()

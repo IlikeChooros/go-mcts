@@ -63,7 +63,7 @@ func main() {
     tree.SetLimits(mcts.DefaultLimits().SetMovetime(2000).SetThreads(4))
     tree.Search()
 
-    best := tree.RootMove()
+    best := tree.BestMove()
     fmt.Println("Best move:", best)
 }
 ```
