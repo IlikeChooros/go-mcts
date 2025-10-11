@@ -6,7 +6,7 @@ This is an example of ultimate tic tac toe implementation.
 If you don't know the rules, see: https://en.wikipedia.org/wiki/Ultimate_tic-tac-toe
 
 All of the game logic is in the 'uttt' package (examples/ultimate-tic-tac-toe/uttt),
-including the MCTS implementation (ucb/uttt_mcts.go and rave/uttt_mcts.go).
+including the MCTS[T, S, R, O, A]implementation (ucb/uttt_mcts.go and rave/uttt_mcts.go).
 
 Example below shows how to run a search and get the result.
 
@@ -21,9 +21,9 @@ import (
 )
 
 func main() {
-	fmt.Println("Ultimate Tic Tac Toe MCTS UCB1 Example")
+	fmt.Println("Ultimate Tic Tac Toe MCTS[T, S, R, O, A]UCB1 Example")
 
-	// Create a new UTTT MCTS instance
+	// Create a new UTTT MCTS[T, S, R, O, A]instance
 	// - UCB1 selection policy
 	// - NodeStats for per-node visits/outcomes
 	// - Default 2-player zero-sum backpropagation

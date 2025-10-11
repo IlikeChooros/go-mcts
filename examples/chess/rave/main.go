@@ -1,7 +1,7 @@
 package main
 
 /*
-Chess MCTS (RAVE) example
+Chess MCTS[T, S, R, O, A](RAVE) example
 
 This example wires the go-mcts library to a chess engine (dragontoothmg) and
 runs a search with the RAVE (AMAF) selection policy. It also demonstrates:
@@ -33,16 +33,16 @@ func MovesToString(mvs []dragontoothmg.Move) string {
 }
 
 func main() {
-	// Construct a chess-specific MCTS instance that uses:
+	// Construct a chess-specific MCTS[T, S, R, O, A]instance that uses:
 	// - RAVE selection
 	// - RaveStats node stats (AMAF counters)
 	// - RaveBackprop for AMAF updates
-	ucb := chessmcts.NewRaveMcts()
+	rave := chessmcts.NewRaveMcts()
 
 	// Customize the RAVE beta function (influence of AMAF vs. standard Q).
 	// Smaller b makes AMAF decay faster as visits grow.
 	// This is a variant of the function discussed by D. Silver.
-	mcts.SetRaveBetaFunction(func(n, n_rave int32) float64 {
+	rave.Strategy().SetBetaFunction(func(n, n_rave int32) float64 {
 		// const (
 		// b      = 0.1       // controls the AMAF weight decay
 		// factor = 4 * b * b // smoothing factor
@@ -56,10 +56,10 @@ func main() {
 		}
 		return float64(threshold-n) / float64(threshold)
 	})
-	mcts.SetExplorationParam(0.2) // UCB exploration parameter
+	rave.Strategy().SetExplorationParam(0.2) // UCB exploration parameter
 
 	// Set search limits: 8 threads, 2000 ms. The search call blocks until done.
-	ucb.SetLimits(mcts.DefaultLimits().SetThreads(4).SetCycles(60000))
+	rave.SetLimits(mcts.DefaultLimits().SetThreads(4).SetCycles(60000))
 
 	// Attach a stats listener to stream live search information.
 	// We print UCI-style info lines on depth updates and final bestmove on stop.
@@ -76,6 +76,6 @@ func main() {
 		})
 
 	// Register listener and run the search.
-	ucb.SetListener(listener)
-	ucb.Search()
+	rave.SetListener(listener)
+	rave.Search()
 }

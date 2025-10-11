@@ -6,7 +6,7 @@ import (
 )
 
 // Use when started multi-threaded search and want it to synchronize with this thread
-func (mcts *MCTS[T, S, R, O]) Synchronize() {
+func (mcts *MCTS[T, S, R, O, A]) Synchronize() {
 	if mcts.shouldMerge() {
 		// Wait for the merge to finish
 		for !mcts.merged.Load() {
@@ -18,7 +18,7 @@ func (mcts *MCTS[T, S, R, O]) Synchronize() {
 	}
 }
 
-func (mcts *MCTS[T, S, R, O]) mergeResults() {
+func (mcts *MCTS[T, S, R, O, A]) mergeResults() {
 	for _, other := range mcts.roots[1:] {
 		mergeResult(mcts.Root, other)
 	}
@@ -71,7 +71,7 @@ func mergeResult[T MoveLike, S NodeStatsLike[S]](root *NodeBase[T, S], other *No
 }
 
 // Run multi-treaded search, to wait for the result, call Synchronize
-func (mcts *MCTS[T, S, R, O]) SearchMultiThreaded() {
+func (mcts *MCTS[T, S, R, O, A]) SearchMultiThreaded() {
 	mcts.setupSearch()
 	threads := max(1, mcts.Limiter.Limits().NThreads)
 
@@ -95,13 +95,13 @@ func (mcts *MCTS[T, S, R, O]) SearchMultiThreaded() {
 	}
 }
 
-func (mcts *MCTS[T, S, R, O]) shouldMerge() bool {
+func (mcts *MCTS[T, S, R, O, A]) shouldMerge() bool {
 	return mcts.multithreadPolicy == MultithreadRootParallel && mcts.Limiter.Limits().NThreads > 1
 }
 
 // This function only sets the limits, resets the counters, and the stop flag
 // doesn't actually start the search
-func (mcts *MCTS[T, S, R, O]) setupSearch() {
+func (mcts *MCTS[T, S, R, O, A]) setupSearch() {
 	// Setup
 	// mcts.timer.Movetime(mcts.Limiter.Limits.Movetime)
 	// mcts.timer.Reset()
@@ -123,7 +123,7 @@ func (mcts *MCTS[T, S, R, O]) setupSearch() {
 //
 // Until runs out of the allocated time, nodes, or memory.
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
-func (mcts *MCTS[T, S, R, O]) Search(root *NodeBase[T, S], ops O, threadId int) {
+func (mcts *MCTS[T, S, R, O, A]) Search(root *NodeBase[T, S], ops O, threadId int) {
 	threadRand := rand.New(rand.NewSource(SeedGeneratorFn() + int64(threadId)))
 
 	// For random (light) playouts, set the random number generator
@@ -183,12 +183,12 @@ func (mcts *MCTS[T, S, R, O]) Search(root *NodeBase[T, S], ops O, threadId int) 
 }
 
 // Selects next child to expand, by user-defined selection policy
-func (mcts *MCTS[T, S, R, O]) Selection(root *NodeBase[T, S], ops O, threadRand *rand.Rand, threadId int) *NodeBase[T, S] {
+func (mcts *MCTS[T, S, R, O, A]) Selection(root *NodeBase[T, S], ops O, threadRand *rand.Rand, threadId int) *NodeBase[T, S] {
 
 	node := root
 	depth := int32(0)
 	for node.Expanded() {
-		node = mcts.selection_policy(node, root)
+		node = mcts.strategy.Select(node, root)
 		ops.Traverse(node.Move)
 		depth++
 

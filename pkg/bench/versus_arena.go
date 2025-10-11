@@ -12,7 +12,7 @@ import (
 
 /*
 Arena benchmark subpackage, allows to play a series of games between two
-different MCTS configurations.
+different MCTS[T, S, R, O, A]configurations.
 */
 
 type VersusMatchResult int

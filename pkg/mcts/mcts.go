@@ -18,7 +18,7 @@ type TreeStats struct {
 	cycles   atomic.Uint32
 }
 
-type MCTSLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]] interface {
+type MCTSLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O], A StrategyLike[T, S, R, O]] interface {
 	// Get the size of the tree
 	Size() uint32
 	// Get the size of the tree (by counting)
@@ -61,8 +61,8 @@ type MCTSLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, 
 	SetLimits(limits *Limits)
 	// Get current search limits
 	Limits() *Limits
-	// Get the strategy used by this MCTS instance
-	Strategy() StrategyLike[T, S, R, O]
+	// Get the strategy used by this MCTS[T, S, R, O, A]instance
+	Strategy() A
 	// Reset the listener functions
 	ResetListener()
 	// Get the stats listener
@@ -90,11 +90,10 @@ type MCTSLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, 
 	Reset(isTerminated bool)
 }
 
-type MCTS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]] struct {
+type MCTS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O], A StrategyLike[T, S, R, O]] struct {
 	TreeStats
 	listener          *StatsListener[T]
 	Limiter           LimiterLike
-	selection_policy  SelectionPolicy[T, S]
 	Root              *NodeBase[T, S]
 	size              atomic.Uint32
 	wg                sync.WaitGroup
@@ -102,23 +101,21 @@ type MCTS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R
 	multithreadPolicy MultithreadPolicy
 	roots             []*NodeBase[T, S]
 	merged            atomic.Bool
-	strategy          StrategyLike[T, S, R, O]
+	strategy          A
 	ops               O
 }
 
 // Create new base tree
-func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]](
-	selectionPolicy SelectionPolicy[T, S],
+func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O], A StrategyLike[T, S, R, O]](
+	strategy A,
 	operations O,
 	multithreadPolicy MultithreadPolicy,
 	defaultStats S,
-	strategy StrategyLike[T, S, R, O],
-) *MCTS[T, S, R, O] {
-	mcts := &MCTS[T, S, R, O]{
+) *MCTS[T, S, R, O, A] {
+	mcts := &MCTS[T, S, R, O, A]{
 		TreeStats:         TreeStats{},
 		listener:          &StatsListener[T]{},
 		Limiter:           NewLimiter(uint32(unsafe.Sizeof(NodeBase[T, S]{}))),
-		selection_policy:  selectionPolicy,
 		Root:              &NodeBase[T, S]{Flags: 0, Stats: defaultStats},
 		multithreadPolicy: multithreadPolicy,
 		strategy:          strategy,
@@ -144,7 +141,7 @@ func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S
 	return mcts
 }
 
-func (mcts *MCTS[T, S, R, O]) invokeListener(f ListenerFunc[T]) {
+func (mcts *MCTS[T, S, R, O, A]) invokeListener(f ListenerFunc[T]) {
 	if f != nil {
 		f(toListenerStats(mcts))
 	}
@@ -152,25 +149,25 @@ func (mcts *MCTS[T, S, R, O]) invokeListener(f ListenerFunc[T]) {
 
 // The number of times a node was chosen, but it was already being expanded.
 // Resulting in a 'waiting' state of the search thread
-func (mcts *MCTS[T, S, R, O]) CollisionCount() int32 {
+func (mcts *MCTS[T, S, R, O, A]) CollisionCount() int32 {
 	return mcts.collisionCount.Load()
 }
 
 // Number of all collisions in the tree divided by the number of all cycles,
 // for more info see CollisionCount
-func (mcts *MCTS[T, S, R, O]) CollisionFactor() float64 {
+func (mcts *MCTS[T, S, R, O, A]) CollisionFactor() float64 {
 	return float64(mcts.collisionCount.Load()) / float64(mcts.Cycles())
 }
 
-func (mcts *MCTS[T, S, R, O]) ResetListener() {
+func (mcts *MCTS[T, S, R, O, A]) ResetListener() {
 	mcts.listener.OnCycle(nil).OnDepth(nil).OnStop(nil)
 }
 
-func (mcts *MCTS[T, S, R, O]) StatsListener() *StatsListener[T] {
+func (mcts *MCTS[T, S, R, O, A]) StatsListener() *StatsListener[T] {
 	return mcts.listener
 }
 
-func (mcts *MCTS[T, S, R, O]) SetListener(listener StatsListener[T]) {
+func (mcts *MCTS[T, S, R, O, A]) SetListener(listener StatsListener[T]) {
 	*mcts.listener = listener
 }
 
@@ -187,60 +184,60 @@ func (mcts *MCTS[T, S, R, O]) SetListener(listener StatsListener[T]) {
 //	}()
 //
 //	tree.Search()
-func (mcts *MCTS[T, S, R, O]) SetContext(ctx context.Context) {
+func (mcts *MCTS[T, S, R, O, A]) SetContext(ctx context.Context) {
 	mcts.Limiter.SetContext(ctx)
 }
 
-func (mcts *MCTS[T, S, R, O]) MultithreadPolicy() MultithreadPolicy {
+func (mcts *MCTS[T, S, R, O, A]) MultithreadPolicy() MultithreadPolicy {
 	return mcts.multithreadPolicy
 }
 
-func (mcts *MCTS[T, S, R, O]) SetMultithreadPolicy(policy MultithreadPolicy) {
+func (mcts *MCTS[T, S, R, O, A]) SetMultithreadPolicy(policy MultithreadPolicy) {
 	mcts.multithreadPolicy = policy
 }
 
-func (mcts *MCTS[T, S, R, O]) IsSearching() bool {
+func (mcts *MCTS[T, S, R, O, A]) IsSearching() bool {
 	return !mcts.Limiter.Stop()
 }
 
 // Stop the search
-func (mcts *MCTS[T, S, R, O]) Stop() {
+func (mcts *MCTS[T, S, R, O, A]) Stop() {
 	mcts.Limiter.SetStop(true)
 }
 
 // Maxiumum depth reach during the search, note that usually MaxDepth != len(pv)
-func (mcts *MCTS[T, S, R, O]) MaxDepth() int {
+func (mcts *MCTS[T, S, R, O, A]) MaxDepth() int {
 	return int(mcts.maxdepth.Load())
 }
 
 // Total number of 'iterations', 'cycles', 'simluations' ran during the search
-func (mcts *MCTS[T, S, R, O]) Cycles() int {
+func (mcts *MCTS[T, S, R, O, A]) Cycles() int {
 	return int(mcts.cycles.Load())
 }
 
 // Get cycles per second statistic
-func (mcts *MCTS[T, S, R, O]) Cps() uint32 {
+func (mcts *MCTS[T, S, R, O, A]) Cps() uint32 {
 	return mcts.cps.Load()
 }
 
 // Get the reason why the search was stopped, valid after search ends
-func (mcts *MCTS[T, S, R, O]) StopReason() StopReason {
+func (mcts *MCTS[T, S, R, O, A]) StopReason() StopReason {
 	return mcts.Limiter.StopReason()
 }
 
-func (mcts *MCTS[T, S, R, O]) SetLimits(limits *Limits) {
+func (mcts *MCTS[T, S, R, O, A]) SetLimits(limits *Limits) {
 	mcts.Limiter.SetLimits(limits)
 }
 
-func (mcts *MCTS[T, S, R, O]) Limits() *Limits {
+func (mcts *MCTS[T, S, R, O, A]) Limits() *Limits {
 	return mcts.Limiter.Limits()
 }
 
-func (mcts *MCTS[T, S, R, O]) Strategy() StrategyLike[T, S, R, O] {
+func (mcts *MCTS[T, S, R, O, A]) Strategy() A {
 	return mcts.strategy
 }
 
-func (mcts *MCTS[T, S, R, O]) String() string {
+func (mcts *MCTS[T, S, R, O, A]) String() string {
 	str := fmt.Sprintf("MCTS={Size=%d, Stats:{maxdepth=%d, cps=%d, cycles=%d}, Stop=%v",
 		mcts.Size(), mcts.MaxDepth(), mcts.Cps(), mcts.Cycles(), !mcts.IsSearching())
 	str += fmt.Sprintf(", Root=%v, Root.Children=%v", mcts.Root, mcts.Root.Children)
@@ -261,34 +258,33 @@ func countTreeNodes[T MoveLike, S NodeStatsLike[S]](node *NodeBase[T, S]) int {
 	return nodes
 }
 
-func (mcts *MCTS[T, S, R, O]) Ops() O {
+func (mcts *MCTS[T, S, R, O, A]) Ops() O {
 	return mcts.ops
 }
 
 // Get the size of the tree (by counting)
-func (mcts *MCTS[T, S, R, O]) Count() int {
+func (mcts *MCTS[T, S, R, O, A]) Count() int {
 	return countTreeNodes(mcts.Root)
 }
 
 // Get the size of the tree
-func (mcts *MCTS[T, S, R, O]) Size() uint32 {
+func (mcts *MCTS[T, S, R, O, A]) Size() uint32 {
 	// Count every node in the tree
 	return mcts.size.Load()
 }
 
 // Returns approximation of memory usage of the tree structure
-func (mcts *MCTS[T, S, R, O]) MemoryUsage() uint32 {
-	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T, S]{})) + uint32(unsafe.Sizeof(MCTS[T, S, R, O]{}))
+func (mcts *MCTS[T, S, R, O, A]) MemoryUsage() uint32 {
+	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T, S]{})) + uint32(unsafe.Sizeof(MCTS[T, S, R, O, A]{}))
 }
 
-// Creates a deep copy of the MCTS tree
-func (mcts *MCTS[T, S, R, O]) Clone() *MCTS[T, S, R, O] {
-	clone := &MCTS[T, S, R, O]{
+// Creates a deep copy of the MCTS[T, S, R, O, A]tree
+func (mcts *MCTS[T, S, R, O, A]) Clone() *MCTS[T, S, R, O, A] {
+	clone := &MCTS[T, S, R, O, A]{
 		Root:              mcts.Root.Clone(nil),
 		ops:               mcts.ops.Clone(),
 		strategy:          mcts.strategy,
 		multithreadPolicy: mcts.multithreadPolicy,
-		selection_policy:  mcts.selection_policy,
 		listener:          &StatsListener[T]{},
 		Limiter:           NewLimiter(uint32(unsafe.Sizeof(NodeBase[T, S]{}))),
 	}
@@ -304,7 +300,7 @@ func (mcts *MCTS[T, S, R, O]) Clone() *MCTS[T, S, R, O] {
 }
 
 // Tries to make given 'move' a new root, if it failes, does nothing
-func (mcts *MCTS[T, S, R, O]) MakeMove(move T) bool {
+func (mcts *MCTS[T, S, R, O, A]) MakeMove(move T) bool {
 	// If the search is running, stop it first
 	if mcts.IsSearching() {
 		mcts.Stop()
@@ -338,7 +334,7 @@ func (mcts *MCTS[T, S, R, O]) MakeMove(move T) bool {
 }
 
 // Remove previous tree & update game ops state
-func (mcts *MCTS[T, S, R, O]) Reset(isTerminated bool, defaultStats S) {
+func (mcts *MCTS[T, S, R, O, A]) Reset(isTerminated bool, defaultStats S) {
 	// Discard running search
 	if mcts.IsSearching() {
 		mcts.Stop()
@@ -358,7 +354,7 @@ func (mcts *MCTS[T, S, R, O]) Reset(isTerminated bool, defaultStats S) {
 }
 
 // 'the best move' in the position
-func (mcts *MCTS[T, S, R, O]) BestMove() T {
+func (mcts *MCTS[T, S, R, O, A]) BestMove() T {
 	var signature T
 	if bestChild := mcts.BestChild(mcts.Root, BestChildMostVisits); bestChild != nil {
 		signature = bestChild.Move
@@ -367,7 +363,7 @@ func (mcts *MCTS[T, S, R, O]) BestMove() T {
 }
 
 // Current evaluation of the position
-func (mcts *MCTS[T, S, R, O]) RootScore() Result {
+func (mcts *MCTS[T, S, R, O, A]) RootScore() Result {
 	if bestChild := mcts.BestChild(mcts.Root, BestChildMostVisits); bestChild != nil {
 		return bestChild.Stats.Q() / Result(bestChild.Stats.N())
 	}
@@ -375,7 +371,7 @@ func (mcts *MCTS[T, S, R, O]) RootScore() Result {
 }
 
 // Return best child, based on the policy
-func (mcts *MCTS[T, S, R, O]) BestChild(node *NodeBase[T, S], policy BestChildPolicy) *NodeBase[T, S] {
+func (mcts *MCTS[T, S, R, O, A]) BestChild(node *NodeBase[T, S], policy BestChildPolicy) *NodeBase[T, S] {
 	var bestChild *NodeBase[T, S]
 	var child *NodeBase[T, S]
 	maxVisits := 0
@@ -451,7 +447,7 @@ type PvResult[T MoveLike, S NodeStatsLike[S]] struct {
 }
 
 // Returns 'pvCount' best move lines, specified in the limits
-func (mcts *MCTS[T, S, R, O]) MultiPv(policy BestChildPolicy) []PvResult[T, S] {
+func (mcts *MCTS[T, S, R, O, A]) MultiPv(policy BestChildPolicy) []PvResult[T, S] {
 	if mcts.Root == nil {
 		return nil
 	}
@@ -494,7 +490,7 @@ func (mcts *MCTS[T, S, R, O]) MultiPv(policy BestChildPolicy) []PvResult[T, S] {
 
 // Get the principal variation (ie. the best sequence of moves)
 // from given starting 'root' node, based on given best child policy
-func (mcts *MCTS[T, S, R, O]) PvNodes(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]*NodeBase[T, S], bool) {
+func (mcts *MCTS[T, S, R, O, A]) PvNodes(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]*NodeBase[T, S], bool) {
 	if root == nil {
 		return nil, false
 	}
@@ -533,7 +529,7 @@ func (mcts *MCTS[T, S, R, O]) PvNodes(root *NodeBase[T, S], policy BestChildPoli
 }
 
 // Get the pricipal variation, but only the moves, returns (moves, mate, draw)
-func (mcts *MCTS[T, S, R, O]) Pv(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]T, bool, bool) {
+func (mcts *MCTS[T, S, R, O, A]) Pv(root *NodeBase[T, S], policy BestChildPolicy, includeRoot bool) ([]T, bool, bool) {
 	if root == nil {
 		return nil, false, false
 	}

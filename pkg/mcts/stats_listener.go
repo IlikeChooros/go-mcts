@@ -19,7 +19,8 @@ type ListenerTreeStats[T MoveLike] struct {
 }
 
 // Convert TreeStats to 'ListenerTreeStats' struct
-func toListenerStats[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]](tree *MCTS[T, S, R, O]) ListenerTreeStats[T] {
+func toListenerStats[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O], A StrategyLike[T, S, R, O]](
+	tree *MCTS[T, S, R, O, A]) ListenerTreeStats[T] {
 	pv := tree.MultiPv(BestChildMostVisits)
 	lines := make([]SearchLine[T], len(pv))
 	for i := range len(pv) {

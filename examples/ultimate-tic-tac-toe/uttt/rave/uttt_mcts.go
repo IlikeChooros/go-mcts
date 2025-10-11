@@ -2,7 +2,7 @@ package rave_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS implementation with RAVE selection
+Ultimate Tic Tac Toe MCTS[T, S, R, O, A]implementation with RAVE selection
 
 The code somewhat differs from the UCB example, mainly we have to manually
 implement GameResult (UtttGameResult) and return it in Rollout (GameOperations).
@@ -64,18 +64,19 @@ func (r *UtttGameResult) SwitchTurn() {
 type UtttMCTS struct {
 	// Using mcts.RaveStats (which meet the mcts.RaveStatsLike interface)
 	// and UtttGameResult (meets the mcts.RaveGameResult[uttt.PosType])
-	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations]
+	mcts.MCTS[
+		uttt.PosType, *mcts.RaveStats, *UtttGameResult,
+		*UtttOperations, *mcts.RAVE[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations]]
 }
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
 	return &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
-			mcts.RAVE,
+			mcts.NewRAVE[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations](),
 			NewUtttOps(position),
 			mcts.MultithreadTreeParallel,
 			&mcts.RaveStats{},
-			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations]{},
 		),
 	}
 }

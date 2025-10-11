@@ -81,10 +81,46 @@ func RaveDSilver(n, n_rave int32) float64 {
 	return float64(n) / (float64(n+n_rave) + factor*float64(n*n_rave))
 }
 
-// Rapid Action Value Estimation (RAVE) selection policy
-// Reference: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
-func RAVE[T MoveLike, S RaveStatsLike[S]](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
+type RaveGameResult[T MoveLike] interface {
+	// Result of the game
+	Value() Result
+	// Moves played in rollout, but only the ones played by current player
+	Moves() []T
+	// Append new move
+	Append(T)
+	// Switch turn
+	SwitchTurn()
+}
 
+type RaveGameOperations[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] interface {
+	GameOperations[T, S, R, O]
+}
+
+// Rapid Action Value Estimation (RAVE)
+// Reference: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
+type RAVE[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] struct {
+	ExplorationParam float64
+	BetaFunction     RaveBetaFnType
+}
+
+func NewRAVE[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]]() *RAVE[T, S, R, O] {
+	return &RAVE[T, S, R, O]{
+		ExplorationParam: 0.3, // lower exploration, because of AMAF
+		BetaFunction:     RaveDSilver,
+	}
+}
+
+func (r *RAVE[T, S, R, O]) SetExplorationParam(c float64) *RAVE[T, S, R, O] {
+	r.ExplorationParam = c
+	return r
+}
+
+func (r *RAVE[T, S, R, O]) SetBetaFunction(f RaveBetaFnType) *RAVE[T, S, R, O] {
+	r.BetaFunction = f
+	return r
+}
+
+func (r RAVE[T, S, R, O]) Select(parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 	// Is that's a terminal node, simply return itself, there is no children anyway
 	// and on the rollout we will exit early, since the position is terminated
 	if parent.Terminal() {
@@ -115,12 +151,12 @@ func RAVE[T MoveLike, S RaveStatsLike[S]](parent, root *NodeBase[T, S]) *NodeBas
 		amafq := 0.0
 		if pcm := child.Stats.NRAVE(); pcm > 0 {
 			// specified in vars.go
-			b = RaveBetaFunction(actualVisits, pcm)
+			b = r.BetaFunction(actualVisits, pcm)
 			amafq = float64(child.Stats.QRAVE()) / float64(pcm)
 		}
 
 		ucb := (1.0-b)*q + b*amafq +
-			ExplorationParam*math.Sqrt(lnParentVisits/float64(visits))
+			r.ExplorationParam*math.Sqrt(lnParentVisits/float64(visits))
 
 		if ucb > max {
 			max = ucb
@@ -131,50 +167,7 @@ func RAVE[T MoveLike, S RaveStatsLike[S]](parent, root *NodeBase[T, S]) *NodeBas
 	return &parent.Children[index]
 }
 
-type RaveGameResult[T MoveLike] interface {
-	// Result of the game
-	Value() Result
-	// Moves played in rollout, but only the ones played by current player
-	Moves() []T
-	// Append new move
-	Append(T)
-	// Switch turn
-	SwitchTurn()
-}
-
-type RaveDefaultGameResult[T MoveLike] struct {
-	v   Result
-	mvs []T
-}
-
-func NewRaveGameResult[T MoveLike](v Result, mvs []T) *RaveDefaultGameResult[T] {
-	return &RaveDefaultGameResult[T]{
-		v: v, mvs: mvs,
-	}
-}
-
-func (r *RaveDefaultGameResult[T]) Value() Result {
-	return r.v
-}
-
-func (r *RaveDefaultGameResult[T]) Moves() []T {
-	return r.mvs
-}
-
-func (r *RaveDefaultGameResult[T]) Append(move T) {
-	r.mvs = append(r.mvs, move)
-}
-
-func (r *RaveDefaultGameResult[T]) SwitchTurn() {
-}
-
-type RaveGameOperations[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] interface {
-	GameOperations[T, S, R, O]
-}
-
-type RaveBackprop[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] struct{}
-
-func (b RaveBackprop[T, S, R, O]) Backpropagate(ops O, node *NodeBase[T, S], result R) {
+func (b RAVE[T, S, R, O]) Backpropagate(ops O, node *NodeBase[T, S], result R) {
 	/*
 		source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
 			If white loses the simulation, all nodes along the selection incremented their simulation count (the denominator),

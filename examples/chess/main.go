@@ -1,13 +1,13 @@
 package main
 
 /*
-Chess MCTS (UCB1) example
+Chess MCTS[T, S, R, O, A](UCB1) example
 
 This example wires the go-mcts library to a chess engine (dragontoothmg) and
 runs a multi-threaded search using the UCB1 selection policy.
 
 What it shows:
-- Constructing a chess-specific MCTS instance (UCB1 + default backprop).
+- Constructing a chess-specific MCTS[T, S, R, O, A]instance (UCB1 + default backprop).
 - Setting time/thread limits for the search.
 - Tuning the UCB exploration constant (c).
 - Subscribing a listener to print UCI-like "info ... pv ..." lines and "bestmove ...".
@@ -32,7 +32,7 @@ func MovesToString(mvs []dragontoothmg.Move) string {
 }
 
 func main() {
-	// Build a chess-specific MCTS instance configured for:
+	// Build a chess-specific MCTS[T, S, R, O, A]instance configured for:
 	// - UCB1 selection policy
 	// - NodeStats for per-node visits/outcomes
 	// - Default 2-player zero-sum backpropagation
@@ -45,7 +45,7 @@ func main() {
 	// UCB exploration constant (c). Higher favors exploration, lower favors exploitation.
 	// Typical values are around 0.3 to 1.4 depending on domain; tune empirically.
 	// You can also call mcts.SetExplorationParam(c) to clamp to >= 0.
-	mcts.ExplorationParam = 0.3
+	ucb.Strategy().SetExplorationParam(0.45)
 
 	// Attach a listener to stream live search stats.
 	// OnDepth is called periodically; we print UCI-like lines with eval, depth, CPS, PV.

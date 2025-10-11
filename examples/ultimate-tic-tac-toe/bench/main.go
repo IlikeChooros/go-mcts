@@ -9,6 +9,8 @@ Uses UCB1 and RAVE implementations to play against each other in an arena setup
 */
 
 import (
+	"math"
+
 	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	rave "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/rave"
 	ucb "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/ucb"
@@ -26,34 +28,33 @@ type utttOpsLike[S mcts.NodeStatsLike[S], R mcts.GameResult, G mcts.GameOperatio
 	Position() *uttt.Position
 }
 
-type baseMCTS[S mcts.NodeStatsLike[S], R mcts.GameResult, G utttOpsLike[S, R, G]] struct {
-	mcts.MCTS[uttt.PosType, S, R, G]
+type baseMCTS[S mcts.NodeStatsLike[S], R mcts.GameResult, G utttOpsLike[S, R, G], A mcts.StrategyLike[uttt.PosType, S, R, G]] struct {
+	mcts.MCTS[uttt.PosType, S, R, G, A]
 }
 
-func (b *baseMCTS[S, R, G]) Search() uttt.PosType {
+func (b *baseMCTS[S, R, G, A]) Search() uttt.PosType {
 	b.SearchMultiThreaded()
 	b.Synchronize()
 	return b.BestMove()
 }
 
 type ucbMCTS struct {
-	baseMCTS[*mcts.NodeStats, mcts.Result, *ucb.UtttOperations]
+	baseMCTS[*mcts.NodeStats, mcts.Result, *ucb.UtttOperations, *mcts.UCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *ucb.UtttOperations]]
 }
 
 type raveMCTS struct {
-	baseMCTS[*mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]
+	baseMCTS[*mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations, *mcts.RAVE[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]]
 }
 
 func NewUcb() *ucbMCTS {
 	// Each mcts instance must have its own operations instance
 	return &ucbMCTS{
-		baseMCTS: baseMCTS[*mcts.NodeStats, mcts.Result, *ucb.UtttOperations]{
+		baseMCTS: baseMCTS[*mcts.NodeStats, mcts.Result, *ucb.UtttOperations, *mcts.UCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *ucb.UtttOperations]]{
 			MCTS: *mcts.NewMTCS(
-				mcts.UCB1,
+				mcts.NewUCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *ucb.UtttOperations](0.45),
 				ucb.NewUtttOps(*uttt.NewPosition()),
 				mcts.MultithreadTreeParallel,
 				&mcts.NodeStats{},
-				mcts.DefaultBackprop[uttt.PosType, *mcts.NodeStats, mcts.Result, *ucb.UtttOperations]{},
 			),
 		},
 	}
@@ -77,13 +78,12 @@ func (u *ucbMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Resu
 func NewRave() *raveMCTS {
 	// Each mcts instance must have its own operations instance
 	return &raveMCTS{
-		baseMCTS: baseMCTS[*mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]{
+		baseMCTS: baseMCTS[*mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations, *mcts.RAVE[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]]{
 			MCTS: *mcts.NewMTCS(
-				mcts.RAVE,
+				mcts.NewRAVE[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations](),
 				rave.NewUtttOps(*uttt.NewPosition()),
 				mcts.MultithreadTreeParallel,
 				&mcts.RaveStats{},
-				mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]{},
 			),
 		},
 	}
@@ -106,23 +106,36 @@ func (r *raveMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.Ut
 
 func main() {
 	const (
-		moveTime   = 1500 // ms
-		maxThreads = 4
-		totalGames = 10
-		maxCycles  = 50000
+		maxThreads = 4     // threads per mcts instance (total threads = 2 * maxThreads * arenaThreads)
+		totalGames = 100   // total games to play
+		maxCycles  = 50000 // cycles/iterations per mcts instance
 
 		arenaThreads = 2 // threads for the arena manager
 	)
 
-	limits := mcts.DefaultLimits().SetMovetime(moveTime).SetThreads(maxThreads).SetCycles(maxCycles)
-
 	ucbmcts := NewUcb()
 	ravemcts := NewRave()
 
+	// Fine tune UCB1 exploration parameter
+	ucbmcts.Strategy().SetExplorationParam(0.4)
+
+	// Fine tune RAVE parameters
+	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
+		const K = 40000
+		return math.Sqrt(K / (3.0*float64(n) + K))
+	})
+	ravemcts.Strategy().SetExplorationParam(0.2)
+
+	// Setup and run the arena
+	limits := mcts.DefaultLimits().SetThreads(maxThreads).SetCycles(maxCycles)
 	arena := bench.NewVersusArena(uttt.NewPosition(),
+		bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
 		bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *uttt.Position](ucbmcts),
-		bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts))
+	)
 	arena.Setup(limits, totalGames, arenaThreads)
+
+	// P1: UCB1
+	// P2: RAVE
 	arena.Start(&bench.DefaultListener[uttt.PosType]{})
 	arena.Wait()
 }

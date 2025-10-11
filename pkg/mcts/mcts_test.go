@@ -55,16 +55,18 @@ func (d DummyOps) Clone() *DummyOps {
 	return &DummyOps{depth: d.depth}
 }
 
-// A dummy MCTS implementation for testing purposes.
+// A dummy MCTS[T, S, R, O, A]implementation for testing purposes.
 type DummyMCTS struct {
-	MCTS[Move, *NodeStats, Result, *DummyOps]
+	MCTS[Move, *NodeStats, Result, *DummyOps, *UCB1[Move, *NodeStats, Result, *DummyOps]]
 }
 
 func NewDummyMCTS(policy MultithreadPolicy) *DummyMCTS {
 	return &DummyMCTS{
 		MCTS: *NewMTCS(
-			UCB1, &DummyOps{}, policy,
-			&NodeStats{}, DefaultBackprop[Move, *NodeStats, Result, *DummyOps]{},
+			NewUCB1[Move, *NodeStats, Result, *DummyOps](0.45),
+			&DummyOps{},
+			policy,
+			&NodeStats{},
 		),
 	}
 }
@@ -143,7 +145,7 @@ func TestDummySearchRootParallel(t *testing.T) {
 	t.Logf("eval %.2f cps %d cycles %d pv %v", mcts.RootScore(), mcts.Cps(), mcts.Cycles(), pv)
 }
 
-// Actual unit tests for MCTS components, like Node cloning, UCB1 calculation, etc.
+// Actual unit tests for MCTS[T, S, R, O, A]components, like Node cloning, UCB1 calculation, etc.
 
 func TestMakeMove(t *testing.T) {
 	tree := GetDummyMCTS()

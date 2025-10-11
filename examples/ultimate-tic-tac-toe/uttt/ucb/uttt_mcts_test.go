@@ -288,7 +288,8 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 	parent.Children = children
 
 	// Test selection policy
-	selected := mcts.UCB1(parent, parent)
+	strategy := mcts.NewUCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations](0.45)
+	selected := strategy.Select(parent, parent)
 
 	// Should select unvisited node
 	if selected.Stats.N() != 0 {
@@ -297,7 +298,7 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 
 	// Remove unvisited node and test UCB1
 	parent.Children = children[:2]
-	selected = mcts.UCB1(parent, parent)
+	selected = strategy.Select(parent, parent)
 
 	// Verify UCB1 calculation makes sense
 	if selected == nil {
@@ -309,7 +310,7 @@ func TestMCTSUCB1Calculation(t *testing.T) {
 		node := &parent.Children[i]
 		if node.Stats.N() > 0 {
 			winRate := float64(node.Stats.Q()) / float64(node.Stats.N())
-			exploration := mcts.ExplorationParam * math.Sqrt(math.Log(float64(parent.Stats.N()))/float64(node.Stats.N()))
+			exploration := 0.45 * math.Sqrt(math.Log(float64(parent.Stats.N()))/float64(node.Stats.N()))
 			ucb1 := winRate + exploration
 
 			if math.IsNaN(ucb1) || math.IsInf(ucb1, 0) {

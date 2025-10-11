@@ -2,7 +2,7 @@ package ucb_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS implementation with UCB1 selection
+Ultimate Tic Tac Toe MCTS[T, S, R, O, A]implementation with UCB1 selection
 
 */
 
@@ -17,18 +17,17 @@ import (
 
 // Actual UTTT mcts implementation
 type UtttMCTS struct {
-	mcts.MCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations]
+	mcts.MCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations, *mcts.UCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations]]
 }
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
 	return &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
-			mcts.UCB1,
+			mcts.NewUCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations](0.45),
 			NewUtttOps(position),
 			mcts.MultithreadTreeParallel,
 			&mcts.NodeStats{},
-			mcts.DefaultBackprop[uttt.PosType, *mcts.NodeStats, mcts.Result, *UtttOperations]{},
 		),
 	}
 }

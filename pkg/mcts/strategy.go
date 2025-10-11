@@ -1,6 +1,7 @@
 package mcts
 
 type StrategyLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]] interface {
+	Select(node, root *NodeBase[T, S]) *NodeBase[T, S]
 	Backpropagate(ops O, node *NodeBase[T, S], result R)
 }
 

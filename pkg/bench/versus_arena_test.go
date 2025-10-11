@@ -109,17 +109,18 @@ func (d DummyOps) Clone() *DummyOps {
 	return &DummyOps{depth: d.depth, pos: &DummyPos{history: history}, slowDown: d.slowDown}
 }
 
-// A dummy MCTS implementation for testing purposes.
+// A dummy MCTS[T, S, R, O, A]implementation for testing purposes.
 type DummyMCTS struct {
-	mcts.MCTS[Move, *mcts.NodeStats, mcts.Result, *DummyOps]
+	mcts.MCTS[Move, *mcts.NodeStats, mcts.Result, *DummyOps, *mcts.UCB1[Move, *mcts.NodeStats, mcts.Result, *DummyOps]]
 }
 
 func NewDummyMCTS(policy mcts.MultithreadPolicy) *DummyMCTS {
 	return &DummyMCTS{
 		MCTS: *mcts.NewMTCS(
-			mcts.UCB1, &DummyOps{pos: NewDummyPos(), slowDown: true}, policy,
+			mcts.NewUCB1[Move, *mcts.NodeStats, mcts.Result, *DummyOps](0.45),
+			&DummyOps{pos: NewDummyPos(), slowDown: true},
+			policy,
 			&mcts.NodeStats{},
-			mcts.DefaultBackprop[Move, *mcts.NodeStats, mcts.Result, *DummyOps]{},
 		),
 	}
 }

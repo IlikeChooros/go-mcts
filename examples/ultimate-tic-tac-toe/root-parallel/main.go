@@ -57,9 +57,9 @@ func Summary(nthreads int, tree, root *SearchStats) {
 }
 
 func main() {
-	fmt.Println("Ultimate Tic Tac Toe MCTS Example")
+	fmt.Println("Ultimate Tic Tac Toe MCTS[T, S, R, O, A]Example")
 
-	// Create a new UTTT MCTS instance
+	// Create a new UTTT MCTS[T, S, R, O, A]instance
 	tree := ucb.NewUtttMCTS(*uttt.NewPosition())
 
 	// Lets see how much of a difference makes the multithread policy

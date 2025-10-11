@@ -74,7 +74,8 @@ func main() {
 		bestChildPolicy = mcts.BestChildMostVisits
 		nCycles         = 120000
 	)
-	mcts.SetRaveBetaFunction(func(playouts, playoutsContatingMove int32) float64 {
+
+	raveTree.Strategy().SetBetaFunction(func(playouts, playoutsContatingMove int32) float64 {
 		const K = 750.0
 		return math.Sqrt(K / (3.0*float64(playouts) + K))
 	})
