@@ -18,10 +18,12 @@ An implementation of generic [Monte-Carlo Tree Search](https://en.wikipedia.org/
 ## Requirements
 - Go 1.22+
 
-## Instalation
+## Installation
 ```
 go get github.com/IlikeChooros/go-mcts
 ```
+
+This package also uses [`termenv`](https://github.com/muesli/termenv) for terminal styling in benchmarking subpackage.
 
 ## Quick start
 
@@ -54,7 +56,6 @@ func main() {
     tree := mcts.NewMTCS[Move, *mcts.NodeStats, mcts.Result](
         mcts.UCB1,
         ops,
-        0, // flags; use mcts.TerminalFlag if root is terminal
         mcts.MultithreadTreeParallel,
         &mcts.NodeStats{},
         mcts.DefaultBackprop[Move, *mcts.NodeStats, mcts.Result]{},
@@ -120,9 +121,9 @@ https://pkg.go.dev/github.com/IlikeChooros/go-mcts
 Quick overview:
 
 Core types (generic):
-- MCTS[T MoveLike, S NodeStatsLike, R GameResult]
+- MCTS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]]
 - SelectionPolicy[T, S]
-- GameOperations[T, S, R] and RandGameOperations[T, S, R]
+- GameOperations[T, S, R, O] and RandGameOperations[T, S, R, O]
 - Strategies for backpropagation (DefaultBackprop, RaveBackprop)
 - NodeBase[T, S], NodeStats and RaveStats
 

@@ -2,31 +2,17 @@ package bench
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/IlikeChooros/go-mcts/pkg/mcts"
+	// For ANSI terminal codes
+	"github.com/muesli/termenv"
 )
 
-// ANSI codes
-const (
-	ANSI_CLEAR_SCREEN             = "\033[2J"
-	ANSI_CLEAR_SCREEN_FROM_CURSOR = "\033[J"
-	ANSI_CLEAR_SCREEN_TO_CURSOR   = "\033[1J"
+const statsRowStart = 4
 
-	ANSI_CLEAR_LINE             = "\033[2K"
-	ANSI_CLEAR_LINE_FROM_CURSOR = "\033[K"
-	ANSI_CLEAR_LINE_TO_CURSOR   = "\033[1K"
-
-	ANSI_BG_BLACK = "\033[40m"
-	ANSI_BG_RED   = "\033[41m"
-
-	ANSI_CURSOR_HIDE = "\033[?25l"
-	ANSI_CURSOR_SHOW = "\033[?25h"
-
-	ANSI_CURSOR_UP   = "\033[%dB"
-	ANSI_CURSOR_DOWN = "\033[%dC"
-	ANSI_CURSOR_POS  = "\033[%d;%dH"
-)
+var printMutex = sync.Mutex{}
 
 type _ListenerStatus int
 
@@ -37,11 +23,14 @@ const (
 )
 
 type ListenerLike[T mcts.MoveLike] interface {
+	OnStart()
+	OnEnd()
+	Summary(VersusSummaryInfo)
 	SetRow(row int)
 	OnGameStart()
 	OnMoveMade(stats VersusWorkerInfo[T])
 	OnFinishedGame(stats VersusWorkerInfo[T])
-	OnFinishedWork()
+	OnFinishedWork(stats VersusWorkerInfo[T])
 	Clone() ListenerLike[T]
 }
 
@@ -64,18 +53,71 @@ func (s _ListenerStatus) String() string {
 }
 
 func (d DefaultListener[T]) print(stats VersusWorkerInfo[T]) {
+	printMutex.Lock()
+	defer printMutex.Unlock()
 
-	var etaStr string
-	if d.avgTime == 0 {
-		eta := d.avgTime.Milliseconds() * (int64(stats.NGames - stats.FinishedGames))
-		etaStr = time.Duration(eta).String()
-	} else {
-		etaStr = "unknown"
+	eta := termenv.String("unknown").Foreground(termenv.ANSIBrightBlack).Italic()
+	if d.avgTime != 0 {
+		v := d.avgTime * time.Duration(stats.NGames-stats.FinishedGames)
+		eta = termenv.String(time.Duration(v).Round(time.Second).String()).Foreground(termenv.ANSIWhite).Italic()
 	}
 
-	fmt.Printf("%sStatus: %s %d/%d games %d movenum eta: %s %s",
-		d.ansiLinePos, _ListenerStatusOnGoing.String(), stats.FinishedGames, stats.NGames, stats.GameMoveNum, etaStr,
-		ANSI_CLEAR_LINE_FROM_CURSOR)
+	worker := termenv.String(fmt.Sprintf("Worker %d", stats.WorkerID)).Foreground(termenv.ANSIColor(33)).Bold()
+
+	ratios := "|"
+	if stats.FinishedGames > 0 {
+		ratios = fmt.Sprintf("| P1: %6.2f%% | P2: %6.2f%% | Draw: %6.2f%% |",
+			float64(stats.P1Wins)/float64(stats.FinishedGames)*100,
+			float64(stats.P2Wins)/float64(stats.FinishedGames)*100,
+			float64(stats.Draws)/float64(stats.FinishedGames)*100)
+	}
+
+	statsLine := termenv.String(fmt.Sprintf("| status %s | games %d/%d | movenum %d %s eta: %s ",
+		_ListenerStatusOnGoing.String(), stats.FinishedGames, stats.NGames, stats.GameMoveNum, ratios, eta.String()))
+
+	out := termenv.DefaultOutput()
+	out.MoveCursor(d.row, 0)
+	out.ClearLine()
+	out.WriteString(fmt.Sprintf("%s %s", worker.String(), statsLine.String()))
+}
+
+func (d *DefaultListener[T]) OnStart() {
+	out := termenv.DefaultOutput()
+	out.HideCursor()
+	out.ClearScreen()
+	out.MoveCursor(2, 0)
+	title := termenv.String("Versus Arena").Foreground(termenv.ANSIColor(33)).Bold().Underline()
+	out.WriteString(fmt.Sprintf("%s\n", title.String()))
+	out.WriteString("=====================================\n")
+}
+
+func (d *DefaultListener[T]) OnEnd() {
+	out := termenv.DefaultOutput()
+	out.ShowCursor()
+	out.ClearLine()
+}
+
+func (d *DefaultListener[T]) Summary(summary VersusSummaryInfo) {
+	printMutex.Lock()
+	defer printMutex.Unlock()
+
+	out := termenv.DefaultOutput()
+	out.MoveCursor(statsRowStart+summary.Workers+1, 0)
+	out.ClearLine()
+	title := termenv.String("Summary").Foreground(termenv.ANSIColor(33)).Bold().Underline()
+	out.WriteString(fmt.Sprintf("%s\n", title.String()))
+	out.WriteString("=====================================\n")
+
+	total := summary.TotalGames
+	p1WinRate := float64(summary.P1Wins) / float64(total) * 100
+	p2WinRate := float64(summary.P2Wins) / float64(total) * 100
+	drawRate := float64(summary.Draws) / float64(total) * 100
+
+	out.WriteString(fmt.Sprintf("Total games: %d\n", total))
+	out.WriteString(fmt.Sprintf("Player 1 wins: %d (%.2f%%)\n", summary.P1Wins, p1WinRate))
+	out.WriteString(fmt.Sprintf("Player 2 wins: %d (%.2f%%)\n", summary.P2Wins, p2WinRate))
+	out.WriteString(fmt.Sprintf("Draws: %d (%.2f%%)\n", summary.Draws, drawRate))
+	out.WriteString("=====================================\n")
 }
 
 func (d *DefaultListener[T]) OnGameStart() {
@@ -91,13 +133,21 @@ func (d *DefaultListener[T]) OnFinishedGame(stats VersusWorkerInfo[T]) {
 	d.print(stats)
 }
 
-func (d DefaultListener[T]) OnFinishedWork() {
-	fmt.Printf("%sStatus: %s%s", d.ansiLinePos, _ListenerStatusFinished.String(), ANSI_CLEAR_LINE_FROM_CURSOR)
+func (d DefaultListener[T]) OnFinishedWork(stats VersusWorkerInfo[T]) {
+	printMutex.Lock()
+	defer printMutex.Unlock()
+
+	out := termenv.DefaultOutput()
+	out.MoveCursor(d.row, 0)
+	out.ClearLine()
+	worker := termenv.String(fmt.Sprintf("Worker %d", stats.WorkerID)).Foreground(termenv.ANSIColor(33)).Bold()
+	status := termenv.String(_ListenerStatusFinished.String()).Foreground(termenv.ANSIColor(34)).Bold()
+
+	out.WriteString(fmt.Sprintf("%s %s\n", worker.String(), status.String()))
 }
 
 func (d *DefaultListener[T]) SetRow(n int) {
 	d.row = n
-	d.ansiLinePos = fmt.Sprintf(ANSI_CURSOR_POS, d.row, 0)
 }
 
 func (d *DefaultListener[T]) Clone() ListenerLike[T] {

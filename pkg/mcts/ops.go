@@ -4,7 +4,7 @@ import "math/rand"
 
 type GameResult any
 
-type GameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
+type GameOperations[T MoveLike, S NodeStatsLike[S], R GameResult, O any] interface {
 	// Generate moves here, and add them as children to given node
 	ExpandNode(parent *NodeBase[T, S]) uint32
 	// Make a move on the internal position definition, with given
@@ -19,12 +19,12 @@ type GameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
 	// position, for example using SetNotation function in engine
 	Reset()
 	// Clone itself, without any shared memory with the other object
-	Clone() GameOperations[T, S, R]
+	Clone() O
 }
 
 // Random-based rollout
-type RandGameOperations[T MoveLike, S NodeStatsLike, R GameResult] interface {
-	GameOperations[T, S, R]
+type RandGameOperations[T MoveLike, S NodeStatsLike[S], R GameResult, O any] interface {
+	GameOperations[T, S, R, O]
 	// Sets the random genertor
 	SetRand(*rand.Rand)
 }

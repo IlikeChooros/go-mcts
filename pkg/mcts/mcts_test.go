@@ -13,7 +13,7 @@ const (
 
 type Move int
 
-// A dummy implementation of NodeStatsLike for testing purposes.
+// A dummy implementation of NodeStatsLike[S] for testing purposes.
 // Always expands by adding 'branchFactor' children, and does random rollouts (0 == draw, 1 == win, 2 == loss)
 
 type DummyOps struct {
@@ -51,24 +51,21 @@ func (d *DummyOps) SetRand(r *rand.Rand) {
 	d.rand = r
 }
 
-func (d DummyOps) Clone() GameOperations[Move, *NodeStats, Result] {
+func (d DummyOps) Clone() *DummyOps {
 	return &DummyOps{depth: d.depth}
 }
 
 // A dummy MCTS implementation for testing purposes.
 type DummyMCTS struct {
-	MCTS[Move, *NodeStats, Result]
-	ops *DummyOps
+	MCTS[Move, *NodeStats, Result, *DummyOps]
 }
 
 func NewDummyMCTS(policy MultithreadPolicy) *DummyMCTS {
-	ops := &DummyOps{}
 	return &DummyMCTS{
 		MCTS: *NewMTCS(
-			UCB1, ops, 0, policy,
-			&NodeStats{}, DefaultBackprop[Move, *NodeStats, Result]{},
+			UCB1, &DummyOps{}, policy,
+			&NodeStats{}, DefaultBackprop[Move, *NodeStats, Result, *DummyOps]{},
 		),
-		ops: ops,
 	}
 }
 
@@ -84,7 +81,7 @@ func TestMain(m *testing.M) {
 func GetDummyMCTS() *DummyMCTS {
 	mcts := NewDummyMCTS(MultithreadTreeParallel)
 	mcts.Limiter.SetLimits(DefaultLimits().SetCycles(10000))
-	mcts.SearchMultiThreaded(mcts.ops)
+	mcts.SearchMultiThreaded()
 	mcts.Synchronize()
 	return mcts
 }
@@ -122,7 +119,7 @@ func TestDummySearchWithListener(t *testing.T) {
 		})
 
 	mcts.SetListener(listener)
-	mcts.SearchMultiThreaded(mcts.ops)
+	mcts.SearchMultiThreaded()
 	mcts.Synchronize()
 
 	// We expect some pv
@@ -135,7 +132,7 @@ func TestDummySearchWithListener(t *testing.T) {
 func TestDummySearchRootParallel(t *testing.T) {
 	mcts := NewDummyMCTS(MultithreadRootParallel)
 	mcts.Limiter.SetLimits(DefaultLimits().SetCycles(10000).SetThreads(4))
-	mcts.SearchMultiThreaded(mcts.ops)
+	mcts.SearchMultiThreaded()
 	mcts.Synchronize()
 
 	if len(mcts.Root.Children) == 0 {
@@ -234,7 +231,7 @@ func deepCompare(n1, n2 *NodeBase[Move, *NodeStats]) bool {
 func TestNodeClone(t *testing.T) {
 	// Create a sample tree
 	tree := GetDummyMCTS()
-	clone := tree.Root.Clone()
+	clone := tree.Root.Clone(nil)
 
 	if !deepCompare(tree.Root, clone) {
 		t.Fatal("Cloned node does not match original")

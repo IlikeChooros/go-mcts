@@ -3,7 +3,7 @@ package mcts
 import "math"
 
 // Default node selection policy (upper confidence bound)
-func UCB1[T MoveLike, S NodeStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
+func UCB1[T MoveLike, S NodeStatsLike[S]](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 
 	// Is that's a terminal node, simply return itself, there is no children anyway
 	// and on the rollout we will exit early, since the position is terminated

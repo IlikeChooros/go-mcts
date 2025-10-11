@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-type NodeStatsLike interface {
+type NodeStatsLike[S any] interface {
 	N() int32
 	VirtualLoss() int32
 	AddQ(Result)
@@ -16,7 +16,7 @@ type NodeStatsLike interface {
 	GetVvl() (visits int32, vl int32)
 	AddVvl(visits, vl int32)
 	RealVisits() int32
-	Clone() NodeStatsLike
+	Clone() S
 }
 
 // visits/virutal draw/win/loss count of the node,
@@ -32,7 +32,7 @@ type NodeStats struct {
 	virtualLoss int32
 }
 
-func (stats *NodeStats) Clone() NodeStatsLike {
+func (stats *NodeStats) Clone() *NodeStats {
 	return &NodeStats{
 		q:           atomic.LoadUint64(&stats.q),
 		n:           atomic.LoadInt32(&stats.n),

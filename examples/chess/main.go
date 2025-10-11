@@ -45,7 +45,7 @@ func main() {
 	// UCB exploration constant (c). Higher favors exploration, lower favors exploitation.
 	// Typical values are around 0.3 to 1.4 depending on domain; tune empirically.
 	// You can also call mcts.SetExplorationParam(c) to clamp to >= 0.
-	mcts.ExplorationParam = 0.45
+	mcts.ExplorationParam = 0.3
 
 	// Attach a listener to stream live search stats.
 	// OnDepth is called periodically; we print UCI-like lines with eval, depth, CPS, PV.

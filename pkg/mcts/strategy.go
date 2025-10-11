@@ -1,14 +1,14 @@
 package mcts
 
-type StrategyLike[T MoveLike, S NodeStatsLike, R GameResult] interface {
-	Backpropagate(ops GameOperations[T, S, R], node *NodeBase[T, S], result R)
+type StrategyLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]] interface {
+	Backpropagate(ops O, node *NodeBase[T, S], result R)
 }
 
-type DefaultBackprop[T MoveLike, S NodeStatsLike, R GameResult] struct{}
+type DefaultBackprop[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R, O]] struct{}
 
 // Assumes the game is 2 player and zero sum, meaning for given result for the current player,
 // the value for the enemy is exactly 1 - result
-func (b DefaultBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, Result], node *NodeBase[T, S], result Result) {
+func (b DefaultBackprop[T, S, R, O]) Backpropagate(ops O, node *NodeBase[T, S], result Result) {
 	/*
 		source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
 			If white loses the simulation, all nodes along the selection incremented their simulation count (the denominator),

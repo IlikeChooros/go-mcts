@@ -64,36 +64,27 @@ func (r *UtttGameResult) SwitchTurn() {
 type UtttMCTS struct {
 	// Using mcts.RaveStats (which meet the mcts.RaveStatsLike interface)
 	// and UtttGameResult (meets the mcts.RaveGameResult[uttt.PosType])
-	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *UtttGameResult]
-	ops *UtttOperations
+	mcts.MCTS[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations]
 }
 
 func NewUtttMCTS(position uttt.Position) *UtttMCTS {
 	// Each mcts instance must have its own operations instance
-	uttt_ops := newUtttOps(position)
-	tree := &UtttMCTS{
+	return &UtttMCTS{
 		MCTS: *mcts.NewMTCS(
 			mcts.RAVE,
-			uttt_ops,
-			mcts.TerminalFlag(position.IsTerminated()),
+			NewUtttOps(position),
 			mcts.MultithreadTreeParallel,
 			&mcts.RaveStats{},
-			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *UtttGameResult]{},
+			mcts.RaveBackprop[uttt.PosType, *mcts.RaveStats, *UtttGameResult, *UtttOperations]{},
 		),
-		ops: uttt_ops,
 	}
-	return tree
-}
-
-func (tree *UtttMCTS) AsyncSearch() {
-	tree.MCTS.SearchMultiThreaded(tree.ops)
 }
 
 // Start the search
 func (tree *UtttMCTS) Search() {
 
 	// Run the search
-	tree.SearchMultiThreaded(tree.ops)
+	tree.SearchMultiThreaded()
 
 	// Wait for the search to end
 	tree.Synchronize()
@@ -101,18 +92,18 @@ func (tree *UtttMCTS) Search() {
 
 // Remove current game tree, resets the tree's and game ops's state
 func (tree *UtttMCTS) Reset() {
-	tree.MCTS.Reset(tree.ops, tree.ops.position.IsTerminated(), &mcts.RaveStats{})
+	tree.MCTS.Reset(tree.Ops().position.IsTerminated(), &mcts.RaveStats{})
 }
 
 // Set the position
 func (tree *UtttMCTS) SetPosition(position uttt.Position) {
-	tree.ops.position = position
+	tree.Ops().position = position
 	tree.Reset()
 }
 
 func (mcts *UtttMCTS) SetNotation(notation string) error {
 	defer mcts.Reset()
-	return mcts.ops.position.FromNotation(notation)
+	return mcts.Ops().position.FromNotation(notation)
 }
 
 func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchResult {
@@ -123,7 +114,7 @@ func (tree *UtttMCTS) SearchResult(pvPolicy mcts.BestChildPolicy) uttt.SearchRes
 		Depth:  tree.MaxDepth(),
 		Cycles: tree.Root.Stats.N(),
 		Lines:  make([]uttt.EngineLine, len(multipv)),
-		Turn:   tree.ops.rootSide,
+		Turn:   tree.Ops().rootSide,
 		Size:   tree.Size(),
 		Memory: uint64(unsafe.Sizeof(mcts.NodeBase[uttt.PosType, *mcts.RaveStats]{})) * uint64(tree.Size()),
 	}
@@ -190,7 +181,7 @@ type UtttOperations struct {
 	random *rand.Rand
 }
 
-func newUtttOps(pos uttt.Position) *UtttOperations {
+func NewUtttOps(pos uttt.Position) *UtttOperations {
 	return &UtttOperations{
 		position: pos,
 		rootSide: pos.Turn(),
@@ -209,7 +200,7 @@ func (ops *UtttOperations) ExpandNode(node *mcts.NodeBase[uttt.PosType, *mcts.Ra
 	for i, m := range moves.Slice() {
 		ops.position.MakeMove(m)
 		isTerminal := ops.position.IsTerminated()
-		ops.position.UndoMove()
+		ops.position.Undo()
 
 		node.Children[i] = *mcts.NewBaseNode(node, m, isTerminal, &mcts.RaveStats{})
 	}
@@ -222,7 +213,7 @@ func (ops *UtttOperations) Traverse(signature uttt.PosType) {
 }
 
 func (ops *UtttOperations) BackTraverse() {
-	ops.position.UndoMove()
+	ops.position.Undo()
 }
 
 // Play the game until a terminal node is reached
@@ -264,7 +255,7 @@ func (ops *UtttOperations) Rollout() *UtttGameResult {
 
 	// Undo the moves
 	for range moveCount {
-		ops.position.UndoMove()
+		ops.position.Undo()
 	}
 
 	return &UtttGameResult{
@@ -281,8 +272,19 @@ func (ops *UtttOperations) SetRand(r *rand.Rand) {
 }
 
 // It should return a deep copy of the ops object
-func (ops UtttOperations) Clone() mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
-	return mcts.GameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult](&UtttOperations{
-		position: ops.position.Clone(),
-	})
+func (ops UtttOperations) Clone() *UtttOperations {
+	return &UtttOperations{
+		position: *ops.position.Clone(),
+		rootSide: ops.rootSide,
+	}
+}
+
+// Added for benchmarking purposes
+func (ops *UtttOperations) Position() *uttt.Position {
+	return &ops.position
+}
+
+func (ops *UtttOperations) SetPosition(pos uttt.Position) {
+	ops.position = pos
+	ops.rootSide = pos.Turn()
 }

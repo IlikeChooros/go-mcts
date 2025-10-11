@@ -12,8 +12,8 @@ import (
 // meaning the moves can be played in different order from given position, and the result
 // will be the same. For example: Go, Chess, Tic Tac Toe (transposable positions).
 
-type RaveStatsLike interface {
-	NodeStatsLike
+type RaveStatsLike[S any] interface {
+	NodeStatsLike[S]
 
 	// Outcomes contating node's move
 	QRAVE() Result
@@ -37,7 +37,7 @@ type RaveStats struct {
 	n_rave int32
 }
 
-func (r *RaveStats) Clone() NodeStatsLike {
+func (r *RaveStats) Clone() *RaveStats {
 	return &RaveStats{
 		NodeStats: NodeStats{
 			q:           atomic.LoadUint64(&r.q),
@@ -83,7 +83,7 @@ func RaveDSilver(n, n_rave int32) float64 {
 
 // Rapid Action Value Estimation (RAVE) selection policy
 // Reference: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
-func RAVE[T MoveLike, S RaveStatsLike](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
+func RAVE[T MoveLike, S RaveStatsLike[S]](parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 
 	// Is that's a terminal node, simply return itself, there is no children anyway
 	// and on the rollout we will exit early, since the position is terminated
@@ -168,13 +168,13 @@ func (r *RaveDefaultGameResult[T]) Append(move T) {
 func (r *RaveDefaultGameResult[T]) SwitchTurn() {
 }
 
-type RaveGameOperations[T MoveLike, S RaveStatsLike, R RaveGameResult[T]] interface {
-	GameOperations[T, S, R]
+type RaveGameOperations[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] interface {
+	GameOperations[T, S, R, O]
 }
 
-type RaveBackprop[T MoveLike, S RaveStatsLike, R RaveGameResult[T]] struct{}
+type RaveBackprop[T MoveLike, S RaveStatsLike[S], R RaveGameResult[T], O GameOperations[T, S, R, O]] struct{}
 
-func (b RaveBackprop[T, S, R]) Backpropagate(ops GameOperations[T, S, R], node *NodeBase[T, S], result R) {
+func (b RaveBackprop[T, S, R, O]) Backpropagate(ops O, node *NodeBase[T, S], result R) {
 	/*
 		source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
 			If white loses the simulation, all nodes along the selection incremented their simulation count (the denominator),

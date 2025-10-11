@@ -6,7 +6,7 @@ import (
 )
 
 // Use when started multi-threaded search and want it to synchronize with this thread
-func (mcts *MCTS[T, S, R]) Synchronize() {
+func (mcts *MCTS[T, S, R, O]) Synchronize() {
 	if mcts.shouldMerge() {
 		// Wait for the merge to finish
 		for !mcts.merged.Load() {
@@ -18,7 +18,7 @@ func (mcts *MCTS[T, S, R]) Synchronize() {
 	}
 }
 
-func (mcts *MCTS[T, S, R]) mergeResults() {
+func (mcts *MCTS[T, S, R, O]) mergeResults() {
 	for _, other := range mcts.roots[1:] {
 		mergeResult(mcts.Root, other)
 	}
@@ -27,7 +27,7 @@ func (mcts *MCTS[T, S, R]) mergeResults() {
 }
 
 // Helper function to merge results from other root nodes into the main root
-func mergeResult[T MoveLike, S NodeStatsLike](root *NodeBase[T, S], other *NodeBase[T, S]) {
+func mergeResult[T MoveLike, S NodeStatsLike[S]](root *NodeBase[T, S], other *NodeBase[T, S]) {
 	if root == nil || other == nil {
 		return
 	}
@@ -71,7 +71,7 @@ func mergeResult[T MoveLike, S NodeStatsLike](root *NodeBase[T, S], other *NodeB
 }
 
 // Run multi-treaded search, to wait for the result, call Synchronize
-func (mcts *MCTS[T, S, R]) SearchMultiThreaded(ops GameOperations[T, S, R]) {
+func (mcts *MCTS[T, S, R, O]) SearchMultiThreaded() {
 	mcts.setupSearch()
 	threads := max(1, mcts.Limiter.Limits().NThreads)
 
@@ -83,7 +83,7 @@ func (mcts *MCTS[T, S, R]) SearchMultiThreaded(ops GameOperations[T, S, R]) {
 			mcts.roots[id] = mcts.Root
 		} else {
 			// Each thread (apart from the main one) will have it's own copy of the root node
-			mcts.roots[id] = mcts.Root.Clone()
+			mcts.roots[id] = mcts.Root.Clone(nil)
 		}
 	}
 
@@ -91,17 +91,17 @@ func (mcts *MCTS[T, S, R]) SearchMultiThreaded(ops GameOperations[T, S, R]) {
 		mcts.wg.Add(1)
 
 		// Start the search in a separate goroutine
-		go mcts.Search(mcts.roots[id], ops.Clone(), id)
+		go mcts.Search(mcts.roots[id], mcts.ops.Clone(), id)
 	}
 }
 
-func (mcts *MCTS[T, S, R]) shouldMerge() bool {
+func (mcts *MCTS[T, S, R, O]) shouldMerge() bool {
 	return mcts.multithreadPolicy == MultithreadRootParallel && mcts.Limiter.Limits().NThreads > 1
 }
 
 // This function only sets the limits, resets the counters, and the stop flag
 // doesn't actually start the search
-func (mcts *MCTS[T, S, R]) setupSearch() {
+func (mcts *MCTS[T, S, R, O]) setupSearch() {
 	// Setup
 	// mcts.timer.Movetime(mcts.Limiter.Limits.Movetime)
 	// mcts.timer.Reset()
@@ -123,11 +123,11 @@ func (mcts *MCTS[T, S, R]) setupSearch() {
 //
 // Until runs out of the allocated time, nodes, or memory.
 // threadId must be unique, 0 meaning it's the main search threads with some privileges
-func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S, R], threadId int) {
+func (mcts *MCTS[T, S, R, O]) Search(root *NodeBase[T, S], ops O, threadId int) {
 	threadRand := rand.New(rand.NewSource(SeedGeneratorFn() + int64(threadId)))
 
 	// For random (light) playouts, set the random number generator
-	if rg, ok := ops.(RandGameOperations[T, S, R]); ok {
+	if rg, ok := GameOperations[T, S, R, O](ops).(RandGameOperations[T, S, R, O]); ok {
 		rg.SetRand(threadRand)
 	}
 
@@ -183,7 +183,7 @@ func (mcts *MCTS[T, S, R]) Search(root *NodeBase[T, S], ops GameOperations[T, S,
 }
 
 // Selects next child to expand, by user-defined selection policy
-func (mcts *MCTS[T, S, R]) Selection(root *NodeBase[T, S], ops GameOperations[T, S, R], threadRand *rand.Rand, threadId int) *NodeBase[T, S] {
+func (mcts *MCTS[T, S, R, O]) Selection(root *NodeBase[T, S], ops O, threadRand *rand.Rand, threadId int) *NodeBase[T, S] {
 
 	node := root
 	depth := int32(0)

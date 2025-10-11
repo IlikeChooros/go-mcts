@@ -11,7 +11,7 @@ const (
 	TerminalMask  uint32 = 4
 )
 
-type NodeBase[T MoveLike, S NodeStatsLike] struct {
+type NodeBase[T MoveLike, S NodeStatsLike[S]] struct {
 	Stats    S
 	Move     T
 	Children []NodeBase[T, S]
@@ -21,7 +21,7 @@ type NodeBase[T MoveLike, S NodeStatsLike] struct {
 
 type NodeBaseDefault[T MoveLike] NodeBase[T, *NodeStats]
 
-func newRootNode[T MoveLike, S NodeStatsLike](terminated bool, defaultStats S) *NodeBase[T, S] {
+func newRootNode[T MoveLike, S NodeStatsLike[S]](terminated bool, defaultStats S) *NodeBase[T, S] {
 	return &NodeBase[T, S]{
 		Children: nil,
 		Flags:    TerminalFlag(terminated),
@@ -30,7 +30,7 @@ func newRootNode[T MoveLike, S NodeStatsLike](terminated bool, defaultStats S) *
 }
 
 // NewBaseNode creates a new child node under the given parent with the specified move.
-func NewBaseNode[T MoveLike, S NodeStatsLike](parent *NodeBase[T, S], move T, terminated bool, defaultStats S) *NodeBase[T, S] {
+func NewBaseNode[T MoveLike, S NodeStatsLike[S]](parent *NodeBase[T, S], move T, terminated bool, defaultStats S) *NodeBase[T, S] {
 	return &NodeBase[T, S]{
 		Move:     move,
 		Children: nil,
@@ -40,14 +40,14 @@ func NewBaseNode[T MoveLike, S NodeStatsLike](parent *NodeBase[T, S], move T, te
 	}
 }
 
-func (node *NodeBase[T, S]) Clone() *NodeBase[T, S] {
+func (node *NodeBase[T, S]) Clone(parent *NodeBase[T, S]) *NodeBase[T, S] {
 	// TODO:
 	// Test this properly
 
 	clone := &NodeBase[T, S]{
 		Move:     node.Move,
 		Children: make([]NodeBase[T, S], len(node.Children)),
-		Parent:   node.Parent,
+		Parent:   parent,
 		Flags:    node.Flags,
 	}
 	// Create a deep copy of the children
@@ -57,13 +57,12 @@ func (node *NodeBase[T, S]) Clone() *NodeBase[T, S] {
 		// clone.Children[i].Move = childClone.Move
 		// clone.Children[i].Parent = clone
 		// clone.Children[i].Flags = childClone.Flags
-		clone.Children[i] = *node.Children[i].Clone()
-		clone.Children[i].Parent = clone
+		clone.Children[i] = *node.Children[i].Clone(clone)
 	}
 	// clone.visits.Store(node.visits.Load())
 	// clone.virtualLoss.Store(node.virtualLoss.Load())
 	// clone.sumOutcomes.Store(node.sumOutcomes.Load())
-	clone.Stats = node.Stats.Clone().(S)
+	clone.Stats = node.Stats.Clone()
 	return clone
 }
 

@@ -34,6 +34,10 @@ func (p *Position) Termination() Termination {
 	return p.termination
 }
 
+func (p *Position) IsDraw() bool {
+	return p.termination == TerminationDraw
+}
+
 // Check if the whole board is terminated
 func (p *Position) IsTerminated() bool {
 	if p.termination != TerminationNone {

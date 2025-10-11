@@ -2,6 +2,7 @@ package bench
 
 import (
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,68 +23,82 @@ const (
 	VersusDraw   VersusMatchResult = 0
 )
 
-type PositionLike[T mcts.MoveLike] interface {
-	Make(T)
+type PositionLike[T mcts.MoveLike, P any] interface {
+	MakeMove(T)
 	Undo()
-	IsTerminal() bool
+	IsTerminated() bool
 	IsDraw() bool
+	Clone() P
 }
 
 type VersusArenaStats struct {
-	p1Wins atomic.Uint32
-	p2Wins atomic.Uint32
-	draws  atomic.Uint32
+	p1Wins uint32
+	p2Wins uint32
+	draws  uint32
 }
 
 func (vas *VersusArenaStats) Total() int {
-	return int(vas.p1Wins.Load() + vas.p2Wins.Load() + vas.draws.Load())
+	return int(vas.P1Wins() + vas.P2Wins() + vas.Draws())
 }
 
 func (vas *VersusArenaStats) P1Wins() int {
-	return int(vas.p1Wins.Load())
+	return int(atomic.LoadUint32(&vas.p1Wins))
 }
 
 func (vas *VersusArenaStats) P2Wins() int {
-	return int(vas.p2Wins.Load())
+	return int(atomic.LoadUint32(&vas.p2Wins))
 }
 
 func (vas *VersusArenaStats) Draws() int {
-	return int(vas.draws.Load())
+	return int(atomic.LoadUint32(&vas.draws))
 }
 
 type VersusWorkerInfo[T mcts.MoveLike] struct {
+	WorkerID      int
 	NGames        int
 	FinishedGames int
 	GameMoveNum   int
 	Moves         []T
+	P1Wins        int
+	P2Wins        int
+	Draws         int
 }
 
-type ExtMCTS[T mcts.MoveLike, S mcts.NodeStatsLike, R mcts.GameResult] interface {
+type VersusSummaryInfo struct {
+	TotalGames int
+	P1Wins     int
+	P2Wins     int
+	Draws      int
+	Workers    int
+}
+
+type ExtMCTS[T mcts.MoveLike, S mcts.NodeStatsLike[S], R mcts.GameResult, P PositionLike[T, P]] interface {
 	Reset()          // reset the tree, keeping the ops and limits
 	MakeMove(T) bool // make a move in the root position, updating the tree
 	SetLimits(*mcts.Limits)
 	Search() T
-	SetPosition(PositionLike[T])
-	Clone() ExtMCTS[T, S, R]
+	SetPosition(P)
+	Clone() ExtMCTS[T, S, R, P]
 }
 
-type VersusArena[T mcts.MoveLike, S1 mcts.NodeStatsLike, R1 mcts.GameResult, S2 mcts.NodeStatsLike, R2 mcts.GameResult] struct {
+type VersusArena[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1], R1 mcts.GameResult, S2 mcts.NodeStatsLike[S2], R2 mcts.GameResult] struct {
 	VersusArenaStats
-	Player1  ExtMCTS[T, S1, R1]
-	Player2  ExtMCTS[T, S2, R2]
+	Player1  ExtMCTS[T, S1, R1, P]
+	Player2  ExtMCTS[T, S2, R2, P]
 	NGames   uint
 	NThreads uint
 	Limits   *mcts.Limits
-	Position PositionLike[T]
+	Position P
 	wg       sync.WaitGroup
+	finished atomic.Bool
 }
 
 func NewVersusArena[
-	T mcts.MoveLike, P PositionLike[T], S1 mcts.NodeStatsLike,
-	R1 mcts.GameResult, S2 mcts.NodeStatsLike, R2 mcts.GameResult](
-	position P, tree1 ExtMCTS[T, S1, R1], tree2 ExtMCTS[T, S2, R2],
-) *VersusArena[T, S1, R1, S2, R2] {
-	return &VersusArena[T, S1, R1, S2, R2]{
+	T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
+	R1 mcts.GameResult, S2 mcts.NodeStatsLike[S2], R2 mcts.GameResult](
+	position P, tree1 ExtMCTS[T, S1, R1, P], tree2 ExtMCTS[T, S2, R2, P],
+) *VersusArena[T, P, S1, R1, S2, R2] {
+	return &VersusArena[T, P, S1, R1, S2, R2]{
 		Player1:  tree1,
 		Player2:  tree2,
 		NGames:   100,
@@ -93,18 +108,27 @@ func NewVersusArena[
 	}
 }
 
-func (va *VersusArena[T, S1, R1, S2, R2]) Setup(limits *mcts.Limits, nGames uint, nThreads uint) {
+func (va *VersusArena[T, P, S1, R1, S2, R2]) Setup(limits *mcts.Limits, nGames uint, nThreads uint) {
 	va.NGames = nGames
 	va.Limits = limits
 	va.NThreads = nThreads
 }
 
-func (va *VersusArena[T, S1, R1, S2, R2]) Wait() {
+func (va *VersusArena[T, P, S1, R1, S2, R2]) Wait() {
 	va.wg.Wait()
+
+	for {
+		if va.finished.Load() {
+			break
+		}
+		runtime.Gosched()
+	}
 }
 
-func (va *VersusArena[T, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
+func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 	// Start equally distributed work between worker threads
+	va.finished.Store(false)
+	listener.OnStart()
 	nGames := va.NGames / va.NThreads
 	rest := uint(0)
 	if va.NThreads > 1 {
@@ -119,56 +143,95 @@ func (va *VersusArena[T, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 		va.wg.Add(1)
 		p1 := va.Player1
 		p2 := va.Player2
+		l := listener
 
 		if i > 0 {
 			p1 = va.Player1.Clone()
 			p2 = va.Player2.Clone()
+			l = listener.Clone()
 		}
 
-		go va.worker(int(nGames)+delta, listener, p1, p2)
+		l.SetRow(int(i) + statsRowStart)
+		p1.SetLimits(va.Limits)
+		p2.SetLimits(va.Limits)
+		go va.worker(int(i), int(nGames)+delta, l, p1, p2)
 	}
 }
 
-func (va *VersusArena[T, S1, R1, S2, R2]) worker(nGames int, listener ListenerLike[T], p1 ExtMCTS[T, S1, R1], p2 ExtMCTS[T, S2, R2]) {
+func (va *VersusArena[T, P, S1, R1, S2, R2]) worker(id, nGames int, listener ListenerLike[T], p1 ExtMCTS[T, S1, R1, P], p2 ExtMCTS[T, S2, R2, P]) {
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 	var result VersusMatchResult
 	var switched bool
+	localStats := VersusArenaStats{}
 
-	for range nGames {
-		var list ListenerLike[T] = nil
-		if listener != nil {
-			list = listener.Clone()
-		}
+	for i := range nGames {
 		if r.Int()%2 == 0 {
-			result = playGame(p1, p2, va.Position, list, nGames, va.Total())
+			result = playGame(p1, p2, va.Position, listener, id, nGames, i, &localStats)
 			switched = false
 		} else {
-			result = playGame(p2, p1, va.Position, list, nGames, va.Total())
+			result = playGame(p2, p1, va.Position, listener, id, nGames, i, &localStats)
 			switched = true
 		}
 
 		if result == VersusDraw {
-			va.draws.Add(1)
+			atomic.AddUint32(&va.draws, 1)
+			localStats.draws++
 		} else {
 			if ((result == VersusPl1Win) && !switched) || ((result == VersusPl2Win) && switched) {
-				va.p1Wins.Add(1)
+				atomic.AddUint32(&va.p1Wins, 1)
+				localStats.p1Wins++
 			} else {
-				va.p2Wins.Add(1)
+				atomic.AddUint32(&va.p2Wins, 1)
+				localStats.p2Wins++
 			}
 		}
 	}
 
 	va.wg.Done()
+	listener.OnFinishedWork(VersusWorkerInfo[T]{
+		WorkerID:      id,
+		NGames:        nGames,
+		FinishedGames: va.Total(),
+		P1Wins:        int(localStats.p1Wins),
+		P2Wins:        int(localStats.p2Wins),
+		Draws:         int(localStats.draws),
+	})
+
+	if listener != nil && id == 0 {
+		va.wg.Wait()
+		listener.Summary(VersusSummaryInfo{
+			P1Wins:     va.P1Wins(),
+			P2Wins:     va.P2Wins(),
+			Draws:      va.Draws(),
+			Workers:    int(va.NThreads),
+			TotalGames: va.Total(),
+		})
+		listener.OnEnd()
+		va.finished.Store(true)
+	}
 }
 
-func playGame[T mcts.MoveLike, S1 mcts.NodeStatsLike,
-	R1 mcts.GameResult, S2 mcts.NodeStatsLike, R2 mcts.GameResult](
-	pl1 ExtMCTS[T, S1, R1], pl2 ExtMCTS[T, S2, R2], p PositionLike[T],
-	listener ListenerLike[T], gameNum, finishedGames int,
+func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
+	R1 mcts.GameResult, S2 mcts.NodeStatsLike[S2], R2 mcts.GameResult](
+	pl1 ExtMCTS[T, S1, R1, P], pl2 ExtMCTS[T, S2, R2, P], p P,
+	listener ListenerLike[T], workerId, nGames, finishedGames int,
+	versusStats *VersusArenaStats,
 ) VersusMatchResult {
+	gamePos := p.Clone()
+	moves := make([]T, 0, 100)
+
 	if listener != nil {
 		listener.OnGameStart()
-		defer listener.OnFinishedWork()
+		defer listener.OnFinishedGame(VersusWorkerInfo[T]{
+			WorkerID:      workerId,
+			Moves:         moves,
+			GameMoveNum:   len(moves),
+			NGames:        nGames,
+			FinishedGames: finishedGames,
+			P1Wins:        versusStats.P1Wins(),
+			P2Wins:        versusStats.P2Wins(),
+			Draws:         versusStats.Draws(),
+		})
 	}
 
 	pl1.Reset()
@@ -177,56 +240,63 @@ func playGame[T mcts.MoveLike, S1 mcts.NodeStatsLike,
 	pl1.SetPosition(p)
 	pl2.SetPosition(p)
 
-	moves := make([]T, 0, 100)
 	var m T
 	gameEndedByPl1 := false
 	result := VersusDraw
 	// Player 1 begins
-	for !p.IsTerminal() {
+	for !gamePos.IsTerminated() {
 
 		m = pl1.Search()
 		pl1.MakeMove(m)
-		p.Make(m)
+		gamePos.MakeMove(m)
 
 		if listener != nil {
 			moves = append(moves, m)
 			listener.OnMoveMade(VersusWorkerInfo[T]{
+				WorkerID:      workerId,
 				Moves:         moves,
 				GameMoveNum:   len(moves),
-				NGames:        gameNum,
+				NGames:        nGames,
 				FinishedGames: finishedGames,
+				P1Wins:        versusStats.P1Wins(),
+				P2Wins:        versusStats.P2Wins(),
+				Draws:         versusStats.Draws(),
 			})
 		}
 
 		if !pl2.MakeMove(m) {
-			pl2.SetPosition(p)
+			pl2.SetPosition(gamePos)
 		}
 
-		if p.IsTerminal() {
+		if gamePos.IsTerminated() {
 			gameEndedByPl1 = true
 			break
 		}
 
 		m = pl2.Search()
 		pl2.MakeMove(m)
-		p.Make(m)
+		gamePos.MakeMove(m)
 
 		if listener != nil {
 			moves = append(moves, m)
 			listener.OnMoveMade(VersusWorkerInfo[T]{
+				WorkerID:      workerId,
 				Moves:         moves,
 				GameMoveNum:   len(moves),
-				NGames:        gameNum,
+				NGames:        nGames,
 				FinishedGames: finishedGames,
+				P1Wins:        versusStats.P1Wins(),
+				P2Wins:        versusStats.P2Wins(),
+				Draws:         versusStats.Draws(),
 			})
 		}
 
 		if !pl1.MakeMove(m) {
-			pl1.SetPosition(p)
+			pl1.SetPosition(gamePos)
 		}
 	}
 
-	if !p.IsDraw() {
+	if !gamePos.IsDraw() {
 		if gameEndedByPl1 {
 			result = VersusPl1Win
 		} else {

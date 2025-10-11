@@ -13,16 +13,12 @@ import (
 
 // Default selection used for debugging
 func (tree *UtttMCTS) Selection() *mcts.NodeBase[uttt.PosType, *mcts.RaveStats] {
-	return tree.MCTS.Selection(tree.Root, tree.ops, rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+	return tree.MCTS.Selection(tree.Root, tree.Ops(), rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 }
 
 // Default backprop used for debugging
 func (tree *UtttMCTS) Backpropagate(node *mcts.NodeBase[uttt.PosType, *mcts.RaveStats], result *UtttGameResult) {
-	tree.MCTS.Strategy().Backpropagate(tree.ops, node, result)
-}
-
-func (tree *UtttMCTS) Ops() mcts.RaveGameOperations[uttt.PosType, *mcts.RaveStats, *UtttGameResult] {
-	return tree.ops
+	tree.MCTS.Strategy().Backpropagate(tree.Ops(), node, result)
 }
 
 func TestMCTSRollout(t *testing.T) {
@@ -81,7 +77,7 @@ func TestMCTSSelection(t *testing.T) {
 
 	// Position should be at the selected node
 	expectedNotation := pos.Notation()
-	pos.UndoMove() // Should undo the traverse from selection
+	pos.Undo() // Should undo the traverse from selection
 	if pos.Notation() == expectedNotation {
 		t.Error("Selection should have traversed to a different position")
 	}

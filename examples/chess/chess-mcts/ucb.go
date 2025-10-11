@@ -38,30 +38,25 @@ type UcbGameOps struct {
 
 // UcbMctsType wires the generic MCTS to the chess-specific operations and types.
 type UcbMctsType struct {
-	mcts.MCTS[chess.Move, *mcts.NodeStats, mcts.Result]
-	ops *UcbGameOps
+	mcts.MCTS[chess.Move, *mcts.NodeStats, mcts.Result, *UcbGameOps]
 }
 
 // NewUcbMcts constructs a ready-to-search MCTS instance for chess with UCB1 selection.
 func NewUcbMcts() *UcbMctsType {
-	ops := newUcbGameOps()
-	Mcts := &UcbMctsType{
+	return &UcbMctsType{
 		MCTS: *mcts.NewMTCS(
 			mcts.UCB1,                    // selection policy
-			ops,                          // game operations (implements Expand/Traverse/Rollout/etc.)
-			0,                            // initial flags (set TerminalFlag if your root is game-over)
+			newUcbGameOps(),              // game operations (implements Expand/Traverse/Rollout/etc.)
 			mcts.MultithreadTreeParallel, // threading policy
-			&mcts.NodeStats{},            // default stats for new nodes
-			mcts.DefaultBackprop[chess.Move, *mcts.NodeStats, mcts.Result]{}, // standard 2-player backprop
+			&mcts.NodeStats{},            // per-node statistics (visits, wins, virtual loss)
+			mcts.DefaultBackprop[chess.Move, *mcts.NodeStats, mcts.Result, *UcbGameOps]{}, // standard 2-player backprop
 		),
-		ops: ops,
 	}
-	return Mcts
 }
 
 // Search runs a (possibly multi-threaded) search and waits until done.
 func (ucb *UcbMctsType) Search() {
-	ucb.SearchMultiThreaded(ucb.ops)
+	ucb.SearchMultiThreaded()
 	ucb.Synchronize()
 }
 
@@ -147,7 +142,7 @@ func (o *UcbGameOps) SetRand(r *rand.Rand) {
 
 // Clone returns a deep copy of the operations object for worker threads.
 // The board must be cloned so each worker can mutate it independently.
-func (o *UcbGameOps) Clone() mcts.GameOperations[chess.Move, *mcts.NodeStats, mcts.Result] {
+func (o *UcbGameOps) Clone() *UcbGameOps {
 	return &UcbGameOps{
 		board: o.board.Clone(),
 	}

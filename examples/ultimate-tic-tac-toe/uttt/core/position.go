@@ -27,7 +27,7 @@ func NewPosition() *Position {
 }
 
 // Make a deep copy of the position (has no shared memory with this object)
-func (p *Position) Clone() Position {
+func (p *Position) Clone() *Position {
 	pos := Position{
 		stateList:    NewStateList(),
 		nextBigIndex: p.nextBigIndex,
@@ -46,7 +46,7 @@ func (p *Position) Clone() Position {
 	}
 
 	copy(pos.stateList.list, p.stateList.list)
-	return pos
+	return &pos
 }
 
 // Initialize the position
@@ -225,7 +225,7 @@ func (p *Position) MakeMove(move PosType) {
 }
 
 // Undo last move, from the state list
-func (p *Position) UndoMove() {
+func (p *Position) Undo() {
 	if p.stateList.ValidSize() == 0 {
 		return
 	}

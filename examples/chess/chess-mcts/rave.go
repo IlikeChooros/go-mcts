@@ -73,30 +73,25 @@ func (r *RaveGameResult) SwitchTurn() {
 
 // RaveMctsType wires go-mcts with chess types and the RAVE policy and stats.
 type RaveMctsType struct {
-	mcts.MCTS[chess.Move, *mcts.RaveStats, *RaveGameResult]
-	ops *RaveGameOps
+	mcts.MCTS[chess.Move, *mcts.RaveStats, *RaveGameResult, *RaveGameOps]
 }
 
 // NewRaveMcts constructs a ready-to-search MCTS instance configured for RAVE.
 func NewRaveMcts() *RaveMctsType {
-	ops := newRaveGameOps()
-	Mcts := &RaveMctsType{
+	return &RaveMctsType{
 		MCTS: *mcts.NewMTCS(
 			mcts.RAVE, // RAVE selection policy
-			ops,
-			0,
+			newRaveGameOps(),
 			mcts.MultithreadTreeParallel,
-			&mcts.RaveStats{}, // stats that include AMAF counters
-			mcts.RaveBackprop[chess.Move, *mcts.RaveStats, *RaveGameResult]{}, // backprop with AMAF updates
+			&mcts.RaveStats{}, // per-node stats type
+			mcts.RaveBackprop[chess.Move, *mcts.RaveStats, *RaveGameResult, *RaveGameOps]{}, // backprop with AMAF updates
 		),
-		ops: ops,
 	}
-	return Mcts
 }
 
 // Search runs the search and waits for completion.
 func (ucb *RaveMctsType) Search() {
-	ucb.SearchMultiThreaded(ucb.ops)
+	ucb.SearchMultiThreaded()
 	ucb.Synchronize()
 }
 
@@ -194,7 +189,7 @@ func (o *RaveGameOps) SetRand(r *rand.Rand) {
 
 // Clone returns a deep copy of the operations object for worker threads.
 // Each worker receives its own board instance to mutate independently.
-func (o *RaveGameOps) Clone() mcts.GameOperations[chess.Move, *mcts.RaveStats, *RaveGameResult] {
+func (o *RaveGameOps) Clone() *RaveGameOps {
 	return &RaveGameOps{
 		board: o.board.Clone(),
 	}
