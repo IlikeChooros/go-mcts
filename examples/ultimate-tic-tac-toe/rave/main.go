@@ -2,10 +2,10 @@ package main
 
 /*
 
-This is an example usage of RAVE selection with MCTS[T, S, R, O, A]
+This is an example usage of RAVE selection with MCTS
 the actual implementation is in 'examples/ultimate-tic-tac-toe/uttt/rave/uttt_mcts.go'
 
-There is no difference to the MCTS[T, S, R, O, A]API, even the listener has the same type as in the UCB example.
+There is no difference to the MCTS API, even the listener has the same type as in the UCB example.
 There is however a visible slowdown in the search speed, because during the backpropagation many nodes are updated.
 
 
@@ -25,9 +25,9 @@ func main() {
 		cycleInterval   = 50000
 	)
 
-	fmt.Println("Ultimate Tic Tac Toe MCTS[T, S, R, O, A]RAVE Example")
+	fmt.Println("Ultimate Tic Tac Toe MCTS RAVE Example")
 
-	// Create a new UTTT MCTS[T, S, R, O, A]instance
+	// Create a new UTTT MCTS instance
 	tree := rave.NewUtttMCTS(*uttt.NewPosition())
 
 	// Set search parameters
@@ -58,7 +58,7 @@ func main() {
 		}).
 		SetCycleInterval(cycleInterval) // Call every 50000 cycles, failing to set will make the listener call on every cycle
 
-	// Attach the listener to the MCTS[T, S, R, O, A]tree
+	// Attach the listener to the MCTS tree
 	tree.SetListener(listener)
 
 	// Run the search, will block until done

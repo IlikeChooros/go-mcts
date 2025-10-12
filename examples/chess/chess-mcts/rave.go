@@ -1,7 +1,7 @@
 package chessmcts
 
 /*
-Chess MCTS[T, S, R, O, A](RAVE/AMAF) example
+Chess MCTS (RAVE/AMAF) example
 
 This example is similar to the UCB version but uses RAVE (Rapid Action Value Estimation)
 to blend standard Q-values with all-moves-as-first (AMAF) statistics. This tends to help
@@ -76,7 +76,7 @@ type RaveMctsType struct {
 	mcts.MCTS[chess.Move, *mcts.RaveStats, *RaveGameResult, *RaveGameOps, *mcts.RAVE[chess.Move, *mcts.RaveStats, *RaveGameResult, *RaveGameOps]]
 }
 
-// NewRaveMcts constructs a ready-to-search MCTS[T, S, R, O, A]instance configured for RAVE.
+// NewRaveMcts constructs a ready-to-search MCTS instance configured for RAVE.
 func NewRaveMcts() *RaveMctsType {
 	return &RaveMctsType{
 		MCTS: *mcts.NewMTCS(

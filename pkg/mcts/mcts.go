@@ -61,7 +61,7 @@ type MCTSLike[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, 
 	SetLimits(limits *Limits)
 	// Get current search limits
 	Limits() *Limits
-	// Get the strategy used by this MCTS[T, S, R, O, A]instance
+	// Get the strategy used by this MCTS instance
 	Strategy() A
 	// Reset the listener functions
 	ResetListener()
@@ -233,6 +233,7 @@ func (mcts *MCTS[T, S, R, O, A]) Limits() *Limits {
 	return mcts.Limiter.Limits()
 }
 
+// Returns underlying selection and backpropagation strategy (UCB1, RAVE, etc)
 func (mcts *MCTS[T, S, R, O, A]) Strategy() A {
 	return mcts.strategy
 }
@@ -273,12 +274,12 @@ func (mcts *MCTS[T, S, R, O, A]) Size() uint32 {
 	return mcts.size.Load()
 }
 
-// Returns approximation of memory usage of the tree structure
+// Returns an approximation of memory usage of the tree structure
 func (mcts *MCTS[T, S, R, O, A]) MemoryUsage() uint32 {
 	return mcts.Size()*uint32(unsafe.Sizeof(NodeBase[T, S]{})) + uint32(unsafe.Sizeof(MCTS[T, S, R, O, A]{}))
 }
 
-// Creates a deep copy of the MCTS[T, S, R, O, A]tree
+// Creates a deep copy of the tree
 func (mcts *MCTS[T, S, R, O, A]) Clone() *MCTS[T, S, R, O, A] {
 	clone := &MCTS[T, S, R, O, A]{
 		Root:              mcts.Root.Clone(nil),
@@ -307,6 +308,11 @@ func (mcts *MCTS[T, S, R, O, A]) MakeMove(move T) bool {
 		mcts.Synchronize()
 	}
 
+	// Sanitity check
+	if mcts.Root == nil || len(mcts.Root.Children) == 0 {
+		return false
+	}
+
 	// Find the child with given move
 	var newRoot *NodeBase[T, S]
 	for i := range mcts.Root.Children {
@@ -324,6 +330,7 @@ func (mcts *MCTS[T, S, R, O, A]) MakeMove(move T) bool {
 	mcts.Root = newRoot
 	mcts.size.Store(uint32(countTreeNodes(newRoot)))
 	mcts.maxdepth.Store(max(0, int32(mcts.MaxDepth()-1)))
+	mcts.ops.Traverse(move) // update game state
 
 	// Detach the new root from its parent
 	newRoot.Parent = nil
@@ -343,11 +350,12 @@ func (mcts *MCTS[T, S, R, O, A]) Reset(isTerminated bool, defaultStats S) {
 
 	// Reset game state and make new root
 	mcts.ops.Reset()
-	mcts.Root = newRootNode[T, S](isTerminated, defaultStats)
+	mcts.Root = newRootNode[T](isTerminated, defaultStats)
 	mcts.size.Store(1)
 	mcts.Root.CanExpand()
 	mcts.Root.FinishExpanding()
 
+	// insignificant optimization
 	if !isTerminated {
 		mcts.size.Add(mcts.ops.ExpandNode(mcts.Root))
 	}

@@ -102,15 +102,11 @@ func (mcts *MCTS[T, S, R, O, A]) shouldMerge() bool {
 // This function only sets the limits, resets the counters, and the stop flag
 // doesn't actually start the search
 func (mcts *MCTS[T, S, R, O, A]) setupSearch() {
-	// Setup
-	// mcts.timer.Movetime(mcts.Limiter.Limits.Movetime)
-	// mcts.timer.Reset()
 	mcts.Limiter.Reset()
 	mcts.cps.Store(0)
 	mcts.cycles.Store(0)
 	mcts.maxdepth.Store(0)
 	mcts.merged.Store(false)
-	// mcts.stop.Store(false)
 }
 
 // Actual search function implementation, simply calls:
@@ -131,7 +127,8 @@ func (mcts *MCTS[T, S, R, O, A]) Search(root *NodeBase[T, S], ops O, threadId in
 		rg.SetRand(threadRand)
 	}
 
-	if root.Terminal() || len(root.Children) == 0 {
+	// Don't allow search on terminal nodes
+	if root.Terminal() {
 		if threadId == mainThreadId {
 			mcts.invokeListener(mcts.listener.onStop)
 		}
@@ -163,7 +160,7 @@ func (mcts *MCTS[T, S, R, O, A]) Search(root *NodeBase[T, S], ops O, threadId in
 		mcts.Limiter.EvaluateStopReason(mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
 	}
 
-	// Synchronize all threads
+	// Stop every search thread
 	mcts.Limiter.Stop()
 
 	// Make sure only 1 thread calls this
@@ -200,9 +197,16 @@ func (mcts *MCTS[T, S, R, O, A]) Selection(root *NodeBase[T, S], ops O, threadRa
 	if node.Stats.RealVisits() > 0 && !node.Terminal() {
 		// Expand the node, only if needed (expand flag is 0)
 		if mcts.Limiter.Expand() && node.CanExpand() {
-			mcts.size.Add(ops.ExpandNode(node))
-			// Now update it's state
-			node.FinishExpanding()
+			v := ops.ExpandNode(node)
+			if len(node.Children) == 0 {
+				// Allocation failed, this may happen even if ops.ExpandNode
+				// is properly implemented, undo the expanding state
+				node.CancelExpanding()
+			} else {
+				// Now update it's state
+				node.FinishExpanding()
+				mcts.size.Add(v)
+			}
 		}
 
 		// Currently expanding

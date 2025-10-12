@@ -1,7 +1,7 @@
 package main
 
 /*
-This example shows how to get real-time updates from the MCTS[T, S, R, O, A]search, by using
+This example shows how to get real-time updates from the MCTS search, by using
 the built-in Listener.
 
 The listener has 3 methods:
@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Ultimate Tic Tac Toe MCTS[T, S, R, O, A]Real-Time Listener Example")
+	fmt.Println("Ultimate Tic Tac Toe MCTS Real-Time Listener Example")
 
 	const (
 		// How many cycles to run before calling the OnCycle listener
@@ -31,7 +31,7 @@ func main() {
 		bestChildPolicy = mcts.BestChildMostVisits
 	)
 
-	// Create a new UTTT MCTS[T, S, R, O, A]instance
+	// Create a new UTTT MCTS instance
 	position := uttt.NewPosition()
 	// turn := position.Turn()
 	tree := basic_uttt_mcts.NewUtttMCTS(*position)
@@ -65,7 +65,7 @@ func main() {
 		}).
 		SetCycleInterval(cycleInterval) // Call every 50000 cycles, failing to set will make the listener call on every cycle
 
-	// Attach the listener to the MCTS[T, S, R, O, A]tree
+	// Attach the listener to the MCTS tree
 	tree.SetListener(listener)
 
 	// Run the search, will block until done

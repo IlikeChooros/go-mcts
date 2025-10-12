@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"context"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -91,6 +92,7 @@ type VersusArena[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1
 	Position P
 	wg       sync.WaitGroup
 	finished atomic.Bool
+	ctx      context.Context
 }
 
 func NewVersusArena[
@@ -105,7 +107,13 @@ func NewVersusArena[
 		NThreads: 2,
 		Limits:   mcts.DefaultLimits().SetMovetime(1000),
 		Position: position,
+		ctx:      context.Background(),
 	}
+}
+
+func (va *VersusArena[T, P, S1, R1, S2, R2]) WithContext(ctx context.Context) *VersusArena[T, P, S1, R1, S2, R2] {
+	va.ctx = ctx
+	return va
 }
 
 func (va *VersusArena[T, P, S1, R1, S2, R2]) Setup(limits *mcts.Limits, nGames uint, nThreads uint) {
@@ -163,14 +171,23 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) worker(id, nGames int, listener Lis
 	var result VersusMatchResult
 	var switched bool
 	localStats := VersusArenaStats{}
+	gamePos := va.Position.Clone()
 
+Loop:
 	for i := range nGames {
 		if r.Int()%2 == 0 {
-			result = playGame(p1, p2, va.Position, listener, id, nGames, i, &localStats)
+			result = playGame(p1, p2, gamePos, listener, id, nGames, i, &localStats, va.ctx)
 			switched = false
 		} else {
-			result = playGame(p2, p1, va.Position, listener, id, nGames, i, &localStats)
+			result = playGame(p2, p1, gamePos, listener, id, nGames, i, &localStats, va.ctx)
 			switched = true
+		}
+
+		select {
+		case <-va.ctx.Done():
+			break Loop
+		default:
+			// continue
 		}
 
 		if result == VersusDraw {
@@ -213,11 +230,10 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) worker(id, nGames int, listener Lis
 
 func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 	R1 mcts.GameResult, S2 mcts.NodeStatsLike[S2], R2 mcts.GameResult](
-	pl1 ExtMCTS[T, S1, R1, P], pl2 ExtMCTS[T, S2, R2, P], p P,
+	pl1 ExtMCTS[T, S1, R1, P], pl2 ExtMCTS[T, S2, R2, P], gamePos P,
 	listener ListenerLike[T], workerId, nGames, finishedGames int,
-	versusStats *VersusArenaStats,
+	versusStats *VersusArenaStats, ctx context.Context,
 ) VersusMatchResult {
-	gamePos := p.Clone()
 	moves := make([]T, 0, 100)
 
 	if listener != nil {
@@ -237,21 +253,30 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 	pl1.Reset()
 	pl2.Reset()
 
-	pl1.SetPosition(p)
-	pl2.SetPosition(p)
+	pl1.SetPosition(gamePos.Clone())
+	pl2.SetPosition(gamePos.Clone())
 
 	var m T
 	gameEndedByPl1 := false
 	result := VersusDraw
 	// Player 1 begins
+Loop:
 	for !gamePos.IsTerminated() {
+
+		select {
+		case <-ctx.Done():
+			result = VersusDraw
+			break Loop
+		default:
+			// continue
+		}
 
 		m = pl1.Search()
 		pl1.MakeMove(m)
 		gamePos.MakeMove(m)
+		moves = append(moves, m)
 
 		if listener != nil {
-			moves = append(moves, m)
 			listener.OnMoveMade(VersusWorkerInfo[T]{
 				WorkerID:      workerId,
 				Moves:         moves,
@@ -264,8 +289,12 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 			})
 		}
 
-		if !pl2.MakeMove(m) {
-			pl2.SetPosition(gamePos)
+		select {
+		case <-ctx.Done():
+			result = VersusDraw
+			break Loop
+		default:
+			// continue
 		}
 
 		if gamePos.IsTerminated() {
@@ -273,12 +302,16 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 			break
 		}
 
+		if !pl2.MakeMove(m) {
+			pl2.SetPosition(gamePos.Clone())
+		}
+
 		m = pl2.Search()
 		pl2.MakeMove(m)
 		gamePos.MakeMove(m)
+		moves = append(moves, m)
 
 		if listener != nil {
-			moves = append(moves, m)
 			listener.OnMoveMade(VersusWorkerInfo[T]{
 				WorkerID:      workerId,
 				Moves:         moves,
@@ -292,7 +325,7 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 		}
 
 		if !pl1.MakeMove(m) {
-			pl1.SetPosition(gamePos)
+			pl1.SetPosition(gamePos.Clone())
 		}
 	}
 
@@ -302,6 +335,11 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 		} else {
 			result = VersusPl2Win
 		}
+	}
+
+	// Undo all moves
+	for range moves {
+		gamePos.Undo()
 	}
 
 	return result

@@ -2,7 +2,7 @@ package rave_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS[T, S, R, O, A]implementation with RAVE selection
+Ultimate Tic Tac Toe MCTS implementation with RAVE selection
 
 The code somewhat differs from the UCB example, mainly we have to manually
 implement GameResult (UtttGameResult) and return it in Rollout (GameOperations).

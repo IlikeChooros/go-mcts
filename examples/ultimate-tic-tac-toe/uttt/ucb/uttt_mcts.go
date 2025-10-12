@@ -2,7 +2,7 @@ package ucb_uttt
 
 /*
 
-Ultimate Tic Tac Toe MCTS[T, S, R, O, A]implementation with UCB1 selection
+Ultimate Tic Tac Toe MCTS implementation with UCB1 selection
 
 */
 

@@ -1,7 +1,7 @@
 package chessmcts
 
 /*
-Chess MCTS[T, S, R, O, A](UCB1) example
+Chess MCTS (UCB1) example
 
 This example shows how to plug the go-mcts library into a third-party chess engine
 for move generation and legality testing. It uses:
@@ -15,7 +15,7 @@ Important integration points:
   - ExpandNode must enumerate legal moves from the current board state and append children nodes.
   - Traverse applies a move to the board; BackTraverse undoes it.
   - Rollout performs a light playout (random moves) until termination and returns a result in [0.0, 1.0].
-  - SetRand is invoked by the MCTS[T, S, R, O, A]worker to provide a per-thread RNG; use it for randomized rollouts.
+  - SetRand is invoked by the MCTS worker to provide a per-thread RNG; use it for randomized rollouts.
 
 Threading:
   - We run with MultithreadTreeParallel by default (shared tree, atomics). For best scaling, keep ExpandNode
@@ -36,12 +36,12 @@ type UcbGameOps struct {
 	random *rand.Rand // injected by the search worker via SetRand
 }
 
-// UcbMctsType wires the generic MCTS[T, S, R, O, A]to the chess-specific operations and types.
+// UcbMctsType wires the generic MCTS to the chess-specific operations and types.
 type UcbMctsType struct {
 	mcts.MCTS[chess.Move, *mcts.NodeStats, mcts.Result, *UcbGameOps, *mcts.UCB1[chess.Move, *mcts.NodeStats, mcts.Result, *UcbGameOps]]
 }
 
-// NewUcbMcts constructs a ready-to-search MCTS[T, S, R, O, A]instance for chess with UCB1 selection.
+// NewUcbMcts constructs a ready-to-search MCTS instance for chess with UCB1 selection.
 func NewUcbMcts() *UcbMctsType {
 	return &UcbMctsType{
 		MCTS: *mcts.NewMTCS(

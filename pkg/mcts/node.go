@@ -101,6 +101,12 @@ func (node *NodeBase[T, S]) CanExpand() bool {
 	return atomic.CompareAndSwapUint32(&node.Flags, CanExpand, ExpandingMask)
 }
 
+// Used to undo the expanding state, if something went wrong
+// during the expansion (failed allocation of children)
+func (node *NodeBase[T, S]) CancelExpanding() {
+	atomic.StoreUint32(&node.Flags, CanExpand)
+}
+
 // After successful 'CanExpand' call, use this function to set
 // the state of the node to 'expanded'
 func (node *NodeBase[T, S]) FinishExpanding() {

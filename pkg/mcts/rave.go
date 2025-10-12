@@ -115,6 +115,8 @@ func (r *RAVE[T, S, R, O]) SetExplorationParam(c float64) *RAVE[T, S, R, O] {
 	return r
 }
 
+// Source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search#Improvements
+// function should be close to one and to zero for relatively small and relatively big 'n' and 'n_rave' respectively.
 func (r *RAVE[T, S, R, O]) SetBetaFunction(f RaveBetaFnType) *RAVE[T, S, R, O] {
 	r.BetaFunction = f
 	return r
@@ -149,10 +151,10 @@ func (r RAVE[T, S, R, O]) Select(parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 		q := float64(child.Stats.Q()) / float64(visits)
 		b := 0.0
 		amafq := 0.0
-		if pcm := child.Stats.NRAVE(); pcm > 0 {
+		if nRave := child.Stats.NRAVE(); nRave > 0 {
 			// specified in vars.go
-			b = r.BetaFunction(actualVisits, pcm)
-			amafq = float64(child.Stats.QRAVE()) / float64(pcm)
+			b = r.BetaFunction(actualVisits, nRave)
+			amafq = float64(child.Stats.QRAVE()) / float64(nRave)
 		}
 
 		ucb := (1.0-b)*q + b*amafq +

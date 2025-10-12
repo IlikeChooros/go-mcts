@@ -9,7 +9,9 @@ Uses UCB1 and RAVE implementations to play against each other in an arena setup
 */
 
 import (
-	"math"
+	"context"
+	"os"
+	"os/signal"
 
 	uttt "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/core"
 	rave "github.com/IlikeChooros/go-mcts/examples/ultimate-tic-tac-toe/uttt/rave"
@@ -107,10 +109,10 @@ func (r *raveMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.Ut
 func main() {
 	const (
 		maxThreads = 4     // threads per mcts instance (total threads = 2 * maxThreads * arenaThreads)
-		totalGames = 100   // total games to play
+		totalGames = 200   // total games to play
 		maxCycles  = 50000 // cycles/iterations per mcts instance
 
-		arenaThreads = 2 // threads for the arena manager
+		arenaThreads = 3 // threads for the arena manager
 	)
 
 	ucbmcts := NewUcb()
@@ -121,10 +123,15 @@ func main() {
 
 	// Fine tune RAVE parameters
 	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
-		const K = 40000
-		return math.Sqrt(K / (3.0*float64(n) + K))
+		const K = 1000
+		// return math.Sqrt(K / (3.0*float64(n) + K))
+		v := float64(0)
+		if n < K {
+			v = 1.0 - float64(n)/K
+		}
+		return v
 	})
-	ravemcts.Strategy().SetExplorationParam(0.2)
+	ravemcts.Strategy().SetExplorationParam(0.35)
 
 	// Setup and run the arena
 	limits := mcts.DefaultLimits().SetThreads(maxThreads).SetCycles(maxCycles)
@@ -133,6 +140,16 @@ func main() {
 		bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *uttt.Position](ucbmcts),
 	)
 	arena.Setup(limits, totalGames, arenaThreads)
+	ctx, cancel := context.WithCancel(context.Background())
+	arena.WithContext(ctx)
+
+	// Handle Ctrl-C
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		cancel()
+	}()
 
 	// P1: UCB1
 	// P2: RAVE

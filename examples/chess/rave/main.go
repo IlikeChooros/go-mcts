@@ -1,7 +1,7 @@
 package main
 
 /*
-Chess MCTS[T, S, R, O, A](RAVE) example
+Chess MCTS (RAVE) example
 
 This example wires the go-mcts library to a chess engine (dragontoothmg) and
 runs a search with the RAVE (AMAF) selection policy. It also demonstrates:
@@ -33,7 +33,7 @@ func MovesToString(mvs []dragontoothmg.Move) string {
 }
 
 func main() {
-	// Construct a chess-specific MCTS[T, S, R, O, A]instance that uses:
+	// Construct a chess-specific MCTS instance that uses:
 	// - RAVE selection
 	// - RaveStats node stats (AMAF counters)
 	// - RaveBackprop for AMAF updates
