@@ -329,6 +329,7 @@ func TestMCTSTerminalNodes(t *testing.T) {
 	}
 
 	mcts := NewUtttMCTS(*pos)
+	mcts.SetTerminal(pos.IsTerminated())
 
 	// Should recognize terminal state
 	if !mcts.Root.Terminal() {

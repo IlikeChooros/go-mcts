@@ -130,20 +130,44 @@ func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S
 		rg.SetRand(rand.New(rand.NewSource(SeedGeneratorFn())))
 	}
 
-	// Expand the root node, by default
-	if mcts.Root.CanExpand() {
-		mcts.Root.FinishExpanding()
-		mcts.size.Store(1 + operations.ExpandNode(mcts.Root))
-	} else {
-		mcts.size.Store(1)
-	}
-
+	mcts.size.Store(1)
+	// Expand the root node, by default (ignore the warning)
+	_ = mcts.tryExpandingWarn(mcts.Root)
 	return mcts
 }
 
 func (mcts *MCTS[T, S, R, O, A]) invokeListener(f ListenerFunc[T]) {
 	if f != nil {
 		f(toListenerStats(mcts))
+	}
+}
+
+// Tries to expand the given node, returns true if the node was terminal,
+// but ExpandNode returned no children (which is a warning sign)
+func (mcts *MCTS[T, S, R, O, A]) tryExpandingWarn(node *NodeBase[T, S]) bool {
+	if node.Terminal() {
+		return false
+	}
+
+	shouldWarn := false
+	v := mcts.ops.ExpandNode(node)
+	if v > 0 && len(node.Children) == int(v) {
+		// Update the size
+		mcts.size.Add(v)
+		node.FinishExpanding()
+	} else {
+		// Root is terminal, but wasn't marked as such
+		shouldWarn = true
+		node.SetFlag(TerminalFlag(true))
+	}
+	return shouldWarn
+}
+
+// Mark the root position as terminal
+func (mcts *MCTS[T, S, R, O, A]) SetTerminal(isTerminal bool) {
+	if isTerminal {
+		mcts.Root.SetFlag(TerminalFlag(true))
+		mcts.Root.Children = nil
 	}
 }
 
@@ -352,12 +376,10 @@ func (mcts *MCTS[T, S, R, O, A]) Reset(isTerminated bool, defaultStats S) {
 	mcts.ops.Reset()
 	mcts.Root = newRootNode[T](isTerminated, defaultStats)
 	mcts.size.Store(1)
-	mcts.Root.CanExpand()
-	mcts.Root.FinishExpanding()
 
 	// insignificant optimization
-	if !isTerminated {
-		mcts.size.Add(mcts.ops.ExpandNode(mcts.Root))
+	if mcts.tryExpandingWarn(mcts.Root) {
+		println("[MCTS] Warning: Reset: root node isn't terminal, but ExpandNode returned no children")
 	}
 }
 
@@ -550,5 +572,6 @@ func (mcts *MCTS[T, S, R, O, A]) Pv(root *NodeBase[T, S], policy BestChildPolicy
 		pv[i] = node.Move
 	}
 
-	return pv, mate, (mate && node.Stats.AvgQ() == 0.5)
+	// pv might be empty, so we must check if the node is valid
+	return pv, mate, (mate && node != nil && node.Stats.AvgQ() == 0.5)
 }

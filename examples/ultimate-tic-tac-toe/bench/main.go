@@ -10,6 +10,7 @@ Uses UCB1 and RAVE implementations to play against each other in an arena setup
 
 import (
 	"context"
+	"math"
 	"os"
 	"os/signal"
 
@@ -119,17 +120,17 @@ func main() {
 	ravemcts := NewRave()
 
 	// Fine tune UCB1 exploration parameter
-	ucbmcts.Strategy().SetExplorationParam(0.4)
+	ucbmcts.Strategy().SetExplorationParam(0.35)
 
 	// Fine tune RAVE parameters
 	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
-		const K = 1000
-		// return math.Sqrt(K / (3.0*float64(n) + K))
-		v := float64(0)
-		if n < K {
-			v = 1.0 - float64(n)/K
-		}
-		return v
+		const K = 5000
+		return math.Sqrt(K / (3.0*float64(n) + K))
+		// v := float64(0)
+		// if n < K {
+		// v = 1.0 - float64(n)/K
+		// }
+		// return v
 	})
 	ravemcts.Strategy().SetExplorationParam(0.35)
 

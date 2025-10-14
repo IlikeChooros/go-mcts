@@ -8,7 +8,12 @@ Use Design Pattern: Strategies
   - There is no clear way to implement 'biasing' without knowing the domain
 - [ ] Add CLOP for optimizing MCTS[T, S, R, O, A]parameters
   - Is this even necessary? There is no neural network and there are like, up to 2 parameters to optimize (exploration constant and rave factor)
-
+- [ ] Cool extensions for VersusArena:
+  - [ ] logging of games in a file (ex: pgn for chess)
+  - [ ] current game state, by default just last 5 moves played ( ex: games 15/75 | moves ... 14. A3a3 A3b2 15. B2b3 B3a1 16. A1h6 | ...)
+  - [ ] engine output (ex: eval 0.45 depth 12 nodes 123456 nps 12345 time 1234 pv A3a3 A3b2 B2b3 B3a1 A1h6 ...)
+  - [ ] recover on panic (save current game, current engine states etc.)
+  - [ ] instead of equally distributing work between workers, use an atomic counter, so that each worker grabs a new game as soon as it finishes the previous one (some worker may finish much faster than other, especially if the number of games is huge)
 
 ## Bugs
 

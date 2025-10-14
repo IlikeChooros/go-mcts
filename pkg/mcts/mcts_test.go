@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sync/atomic"
 	"testing"
 )
 
@@ -26,6 +27,10 @@ func (d *DummyOps) Traverse(m Move) { d.depth++ }
 func (d *DummyOps) BackTraverse()   { d.depth-- }
 
 func (d *DummyOps) ExpandNode(parent *NodeBase[Move, *NodeStats]) uint32 {
+	if d.depth >= 8 {
+		return 0
+	}
+
 	// Always add 'branchFactor' children
 	parent.Children = make([]NodeBase[Move, *NodeStats], branchFactor)
 	for i := range parent.Children {
@@ -128,6 +133,42 @@ func TestDummySearchWithListener(t *testing.T) {
 	pv, _, _ := mcts.Pv(mcts.Root, BestChildMostVisits, false)
 	if len(pv) <= 2 {
 		t.Fatalf("No pv found after search, %v", pv)
+	}
+}
+
+func TestTerminalPosition(t *testing.T) {
+	for i := range 2 {
+		t.Run(fmt.Sprintf("Terminal=%v", i == 1), func(t *testing.T) {
+			dum := NewDummyMCTS(MultithreadTreeParallel)
+			dum.Limiter.SetLimits(DefaultLimits().SetCycles(10000))
+
+			markedTerminal := i == 1
+
+			dum.Ops().depth = 8 // Force terminal position
+			dum.Reset(markedTerminal, &NodeStats{})
+
+			dum.SearchMultiThreaded()
+			dum.Synchronize()
+
+			if len(dum.Root.Children) != 0 {
+				t.Fatalf("Children found after search in terminal position: %d", len(dum.Root.Children))
+			}
+
+			if !dum.Root.Terminal() {
+				t.Fatal("Root node not marked as terminal")
+			}
+
+			if atomic.LoadUint32(&dum.Root.Flags)&ExpandedMask != 0 {
+				t.Fatal("Root node marked as expanded in terminal position")
+			}
+
+			pv, _, _ := dum.Pv(dum.Root, BestChildMostVisits, false)
+			if len(pv) != 0 {
+				t.Fatalf("PV found after search in terminal position: %v", pv)
+			}
+
+			t.Logf("eval %.2f cps %d cycles %d pv %v", dum.RootScore(), dum.Cps(), dum.Cycles(), pv)
+		})
 	}
 }
 

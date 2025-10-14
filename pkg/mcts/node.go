@@ -52,16 +52,8 @@ func (node *NodeBase[T, S]) Clone(parent *NodeBase[T, S]) *NodeBase[T, S] {
 	}
 	// Create a deep copy of the children
 	for i := range node.Children {
-		// childClone := node.Children[i].Clone()
-		// clone.Children[i].Stats = childClone.Stats.Clone().(S)
-		// clone.Children[i].Move = childClone.Move
-		// clone.Children[i].Parent = clone
-		// clone.Children[i].Flags = childClone.Flags
 		clone.Children[i] = *node.Children[i].Clone(clone)
 	}
-	// clone.visits.Store(node.visits.Load())
-	// clone.virtualLoss.Store(node.virtualLoss.Load())
-	// clone.sumOutcomes.Store(node.sumOutcomes.Load())
 	clone.Stats = node.Stats.Clone()
 	return clone
 }
@@ -102,7 +94,7 @@ func (node *NodeBase[T, S]) CanExpand() bool {
 }
 
 // Used to undo the expanding state, if something went wrong
-// during the expansion (failed allocation of children)
+// during the expansion (failed allocation of children for example)
 func (node *NodeBase[T, S]) CancelExpanding() {
 	atomic.StoreUint32(&node.Flags, CanExpand)
 }

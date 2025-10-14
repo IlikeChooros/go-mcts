@@ -72,8 +72,18 @@ func mergeResult[T MoveLike, S NodeStatsLike[S]](root *NodeBase[T, S], other *No
 
 // Run multi-treaded search, to wait for the result, call Synchronize
 func (mcts *MCTS[T, S, R, O, A]) SearchMultiThreaded() {
+	if mcts.Root.Terminal() {
+		return
+	}
+
 	mcts.setupSearch()
 	threads := max(1, mcts.Limiter.Limits().NThreads)
+
+	if !mcts.Root.Expanded() && mcts.tryExpandingWarn(mcts.Root) {
+		// Root is terminal, but wasn't marked as such
+		println("[MCTS] Warning: SearchMultiThreaded: root node is not terminal, but ExpandNode returned no children, search aborted")
+		return
+	}
 
 	// Create a slice of root nodes
 	mcts.roots = make([]*NodeBase[T, S], threads)
@@ -118,22 +128,13 @@ func (mcts *MCTS[T, S, R, O, A]) setupSearch() {
 // 3. backpropagate - to increment counters up to the root
 //
 // Until runs out of the allocated time, nodes, or memory.
-// threadId must be unique, 0 meaning it's the main search threads with some privileges
+// threadId must be unique, 0 meaning it's the main search thread which will call the listeners
 func (mcts *MCTS[T, S, R, O, A]) Search(root *NodeBase[T, S], ops O, threadId int) {
 	threadRand := rand.New(rand.NewSource(SeedGeneratorFn() + int64(threadId)))
 
 	// For random (light) playouts, set the random number generator
 	if rg, ok := GameOperations[T, S, R, O](ops).(RandGameOperations[T, S, R, O]); ok {
 		rg.SetRand(threadRand)
-	}
-
-	// Don't allow search on terminal nodes
-	if root.Terminal() {
-		if threadId == mainThreadId {
-			mcts.invokeListener(mcts.listener.onStop)
-		}
-		mcts.wg.Done()
-		return
 	}
 
 	var node *NodeBase[T, S]
