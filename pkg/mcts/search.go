@@ -151,7 +151,7 @@ func (mcts *MCTS[T, S, R, O, A]) Search(root *NodeBase[T, S], ops O, threadId in
 		mcts.cps.Store(uint32(mcts.Cycles()) * 1000 / mcts.Limiter.Elapsed())
 		// Invoke the 'onCycle' listener
 		if threadId == mainThreadId && mcts.listener.onCycle != nil &&
-			mcts.Root.Stats.N()%int32(mcts.listener.nCycles) == 0 {
+			mcts.Root.Stats.N()%int32(mcts.listener.nCycles) == 0 && !mcts.Limiter.Stop() {
 			mcts.listener.onCycle(toListenerStats(mcts))
 		}
 	}
@@ -236,7 +236,14 @@ func (mcts *MCTS[T, S, R, O, A]) Selection(root *NodeBase[T, S], ops O, threadRa
 	// Set the 'max depth'
 	if mcts.maxdepth.CompareAndSwap(depth-1, depth) {
 		mcts.maxdepth.Store(depth)
-		mcts.invokeListener(mcts.listener.onDepth)
+
+		// Only invoke the listener if the search is running,
+		// because we might get a scenario where 'OnStop' was called, but
+		// other threads were still running and called this
+		if !mcts.Limiter.Stop() {
+			mcts.invokeListener(mcts.listener.onDepth)
+		}
+
 	}
 
 	// return the candidate
