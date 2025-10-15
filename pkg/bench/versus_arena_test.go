@@ -86,7 +86,7 @@ func (d *DummyOps) ExpandNode(parent *mcts.NodeBase[Move, *mcts.NodeStats]) uint
 
 func (d DummyOps) Rollout() mcts.Result {
 	if d.slowDown {
-		time.Sleep(time.Duration((d.rand.Int()%100)+50) * time.Microsecond)
+		time.Sleep(time.Duration((d.rand.Int()%50)+50) * time.Microsecond)
 	}
 	r := d.rand.Intn(3)
 	switch r {

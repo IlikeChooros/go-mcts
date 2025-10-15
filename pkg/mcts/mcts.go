@@ -103,6 +103,7 @@ type MCTS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S, R
 	merged            atomic.Bool
 	strategy          A
 	ops               O
+	statsmx           sync.Mutex
 }
 
 // Create new base tree
@@ -122,6 +123,10 @@ func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S
 		ops:               operations,
 	}
 
+	if any(defaultStats) == nil {
+		panic("[MCTS] NewMCTS: defaultStats cannot be nil")
+	}
+
 	// Set IsSearching to false
 	mcts.Limiter.Stop()
 
@@ -136,9 +141,13 @@ func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S
 	return mcts
 }
 
-func (mcts *MCTS[T, S, R, O, A]) invokeListener(f ListenerFunc[T]) {
+func (mcts *MCTS[T, S, R, O, A]) invokeListener(f ListenerFunc[T], blockOnStop bool) {
 	if f != nil {
-		f(toListenerStats(mcts))
+		mcts.statsmx.Lock()
+		if !(blockOnStop && mcts.Limiter.Stop()) {
+			f(toListenerStats(mcts))
+		}
+		mcts.statsmx.Unlock()
 	}
 }
 
@@ -372,8 +381,13 @@ func (mcts *MCTS[T, S, R, O, A]) Reset(isTerminated bool, defaultStats S) {
 		mcts.Synchronize()
 	}
 
+	if any(defaultStats) == nil {
+		panic("[MCTS] Reset: defaultStats cannot be nil")
+	}
+
 	// Reset game state and make new root
 	mcts.ops.Reset()
+	mcts.Root = nil
 	mcts.Root = newRootNode[T](isTerminated, defaultStats)
 	mcts.size.Store(1)
 
@@ -405,6 +419,10 @@ func (mcts *MCTS[T, S, R, O, A]) BestChild(node *NodeBase[T, S], policy BestChil
 	var bestChild *NodeBase[T, S]
 	var child *NodeBase[T, S]
 	maxVisits := 0
+
+	if !node.Expanded() || len(node.Children) == 0 {
+		return nil
+	}
 
 	// DEBUG
 	// rootTurn := mcts.Root.Turn() == node.Turn()
@@ -540,7 +558,7 @@ func (mcts *MCTS[T, S, R, O, A]) PvNodes(root *NodeBase[T, S], policy BestChildP
 
 	// Simply select 'best child' until we don't have any children
 	// or the node is nil
-	for len(node.Children) > 0 {
+	for len(node.Children) > 0 && node.Expanded() {
 		node = mcts.BestChild(node, policy)
 		if node == nil {
 			break

@@ -32,6 +32,10 @@ type NodeStats struct {
 	virtualLoss int32
 }
 
+func DefaultNodeStats() *NodeStats {
+	return &NodeStats{}
+}
+
 func (stats *NodeStats) Clone() *NodeStats {
 	return &NodeStats{
 		q:           atomic.LoadUint64(&stats.q),

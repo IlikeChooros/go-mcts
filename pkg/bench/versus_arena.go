@@ -149,15 +149,11 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 			rest--
 		}
 		va.wg.Add(1)
-		p1 := va.Player1
-		p2 := va.Player2
-		l := listener
 
-		if i > 0 {
-			p1 = va.Player1.Clone()
-			p2 = va.Player2.Clone()
-			l = listener.Clone()
-		}
+		// Always use a clone, to avoid race conditions when cloning
+		p1 := va.Player1.Clone()
+		p2 := va.Player2.Clone()
+		l := listener.Clone()
 
 		l.SetRow(int(i) + statsRowStart)
 		p1.SetLimits(va.Limits)

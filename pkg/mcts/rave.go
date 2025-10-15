@@ -37,6 +37,10 @@ type RaveStats struct {
 	n_rave int32
 }
 
+func DefaultRaveStats() *RaveStats {
+	return &RaveStats{}
+}
+
 func (r *RaveStats) Clone() *RaveStats {
 	return &RaveStats{
 		NodeStats: NodeStats{
