@@ -141,6 +141,11 @@ func NewMTCS[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperations[T, S
 	return mcts
 }
 
+// blockOnStop:
+//
+// Only invoke the listener if the search is running,
+// because we might get a scenario where 'onStop' was called, but
+// other threads were still running and called this (for example onDepth)
 func (mcts *MCTS[T, S, R, O, A]) invokeListener(f ListenerFunc[T], blockOnStop bool) {
 	if f != nil {
 		mcts.statsmx.Lock()

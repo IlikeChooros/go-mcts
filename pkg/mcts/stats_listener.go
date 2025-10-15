@@ -24,10 +24,15 @@ func toListenerStats[T MoveLike, S NodeStatsLike[S], R GameResult, O GameOperati
 	pv := tree.MultiPv(BestChildMostVisits)
 	lines := make([]SearchLine[T], len(pv))
 	for i := range len(pv) {
+		avq := float64(pv[i].Root.Stats.Q())
+		if pv[i].Root.Stats.N() > 0 {
+			avq /= float64(pv[i].Root.Stats.N())
+		}
+
 		lines[i] = SearchLine[T]{
 			BestMove: pv[i].Root.Move,
 			Moves:    pv[i].Pv,
-			Eval:     float64(pv[i].Root.Stats.AvgQ()),
+			Eval:     avq,
 			Terminal: pv[i].Terminal,
 			Draw:     pv[i].Draw,
 		}

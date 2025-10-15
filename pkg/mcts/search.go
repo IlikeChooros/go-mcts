@@ -70,9 +70,18 @@ func mergeResult[T MoveLike, S NodeStatsLike[S]](root *NodeBase[T, S], other *No
 	}
 }
 
+// Used for pre-mature termination of search
+func (mcts *MCTS[T, S, R, O, A]) prematureCleanup() {
+	mcts.Limiter.Stop()
+	mcts.Limiter.EvaluateStopReason(mcts.Size(), uint32(mcts.MaxDepth()), uint32(mcts.Cycles()))
+	mcts.invokeListener(mcts.listener.onStop, false)
+}
+
 // Run multi-treaded search, to wait for the result, call Synchronize
 func (mcts *MCTS[T, S, R, O, A]) SearchMultiThreaded() {
 	if mcts.Root.Terminal() {
+		// OnStop must always be called, when search terminates
+		mcts.prematureCleanup()
 		return
 	}
 
@@ -81,8 +90,8 @@ func (mcts *MCTS[T, S, R, O, A]) SearchMultiThreaded() {
 
 	if !mcts.Root.Expanded() && mcts.tryExpandingWarn(mcts.Root) {
 		// Root is terminal, but wasn't marked as such
-		println("[MCTS] Warning: SearchMultiThreaded: root node is not terminal, but ExpandNode returned no children, search aborted")
-		return
+		mcts.prematureCleanup()
+		panic("[MCTS] SearchMultiThreaded: root node is not terminal, but ExpandNode returned no children, search aborted")
 	}
 
 	// Create a slice of root nodes
@@ -225,9 +234,7 @@ func (mcts *MCTS[T, S, R, O, A]) Selection(root *NodeBase[T, S], ops O, threadRa
 
 		// Already set
 		if node.Expanded() {
-			// Select child at random
 			node = &node.Children[threadRand.Int31()%int32(len(node.Children))]
-			// Traverse to this child
 			ops.Traverse(node.Move)
 			depth++
 			// Apply again virtual loss
@@ -238,10 +245,6 @@ func (mcts *MCTS[T, S, R, O, A]) Selection(root *NodeBase[T, S], ops O, threadRa
 	// Set the 'max depth'
 	if mcts.maxdepth.CompareAndSwap(depth-1, depth) {
 		mcts.maxdepth.Store(depth)
-
-		// Only invoke the listener if the search is running,
-		// because we might get a scenario where 'OnStop' was called, but
-		// other threads were still running and called this
 		if depth > 1 {
 			mcts.invokeListener(mcts.listener.onDepth, true)
 		}

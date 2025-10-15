@@ -271,6 +271,28 @@ func deepCompare(n1, n2 *NodeBase[Move, *NodeStats]) bool {
 	return true
 }
 
+func TestOnStopCalledWithPrematureTermination(t *testing.T) {
+	stopped := false
+	mcts := NewDummyMCTS(MultithreadTreeParallel)
+	mcts.Reset(true, &NodeStats{}) // Mark root as terminal to force premature termination
+
+	mcts.Limiter.SetLimits(DefaultLimits().SetCycles(100000).SetThreads(4))
+	listener := NewStatsListener[Move]()
+	listener.
+		OnStop(func(stats ListenerTreeStats[Move]) {
+			stopped = true
+			t.Logf("stop reason %s after %d cycles, maxdepth %d cps %d pv %v", stats.StopReason, stats.Cycles, stats.Maxdepth, stats.Cps, stats.Lines)
+		})
+
+	mcts.SetListener(listener)
+	mcts.SearchMultiThreaded()
+	mcts.Synchronize()
+
+	if !stopped {
+		t.Fatal("OnStop listener not called after premature termination")
+	}
+}
+
 func TestNodeClone(t *testing.T) {
 	// Create a sample tree
 	tree := GetDummyMCTS()
