@@ -2,3 +2,4 @@
 go.work
 go.work.sum
 go.sum
+/examples/ultimate-tic-tac-toe/bench/*.json

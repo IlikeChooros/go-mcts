@@ -106,9 +106,11 @@ func (mcts *MCTS[T, S, R, O, A]) SearchMultiThreaded() {
 		}
 	}
 
+	// Fix: Not incrementing by 1 in the loop, because the main searching thread,
+	// will wait after finishing it's search, and if the search was *very* brief,
+	// increment on the waitgroup will cause that panic.
+	mcts.wg.Add(threads)
 	for id := range mcts.roots {
-		mcts.wg.Add(1)
-
 		// Start the search in a separate goroutine
 		go mcts.Search(mcts.roots[id], mcts.ops.Clone(), id)
 	}

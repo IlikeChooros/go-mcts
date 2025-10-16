@@ -10,7 +10,9 @@ Uses UCB1 and RAVE implementations to play against each other in an arena setup
 
 import (
 	"context"
-	"math"
+	"encoding/json"
+	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 
@@ -107,10 +109,19 @@ func (r *raveMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.Ut
 	return newMCTS
 }
 
+type versusData struct {
+	bench.VersusSummaryInfo
+	ExploartionParam float64 `json:"exploration_param"`
+	BetaFunction     string  `json:"beta_function"`
+}
+
 func main() {
+	saveToFile := flag.String("save", "", "Save game results to the specified file")
+	flag.Parse()
+
 	const (
-		maxThreads = 4     // threads per mcts instance (total threads = 2 * maxThreads * arenaThreads)
-		totalGames = 200   // total games to play
+		maxThreads = 4     // threads per mcts instance (total threads = maxThreads * arenaThreads)
+		totalGames = 500   // total games to play
 		maxCycles  = 50000 // cycles/iterations per mcts instance
 
 		arenaThreads = 3 // threads for the arena manager
@@ -120,19 +131,20 @@ func main() {
 	ravemcts := NewRave()
 
 	// Fine tune UCB1 exploration parameter
-	ucbmcts.Strategy().SetExplorationParam(0.35)
+	ucbmcts.Strategy().SetExplorationParam(0.4)
 
 	// Fine tune RAVE parameters
+	// const alpha = 0.45
+	const K = 20000
 	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
-		const K = 5000
-		return math.Sqrt(K / (3.0*float64(n) + K))
-		// v := float64(0)
-		// if n < K {
-		// v = 1.0 - float64(n)/K
-		// }
-		// return v
+		// Using an example from: https://users.soe.ucsc.edu/~dph/mypubs/AMAFpaperWithRef.pdf
+		if n > K {
+			return 0.0
+		}
+		return float64(K-n) / K
+		// return alpha // alpha AMAF
 	})
-	ravemcts.Strategy().SetExplorationParam(0.35)
+	ravemcts.Strategy().SetExplorationParam(0.4)
 
 	// Setup and run the arena
 	limits := mcts.DefaultLimits().SetThreads(maxThreads).SetCycles(maxCycles)
@@ -150,6 +162,36 @@ func main() {
 	go func() {
 		<-c
 		cancel()
+	}()
+
+	// Ensure results are saved on panic or normal exit
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Panic: %v\n", r)
+		}
+
+		if *saveToFile != "" {
+			f, err := os.Create(*saveToFile)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+			data := versusData{
+				VersusSummaryInfo: arena.Results(),
+				ExploartionParam:  ravemcts.Strategy().ExplorationParam,
+				BetaFunction:      fmt.Sprintf("alpha k-n/k (k=%d)", K),
+			}
+			jsonData, err := json.Marshal(data)
+			if err != nil {
+				panic(err)
+			}
+			_, err = f.WriteString(string(jsonData))
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("Results saved to %s\n", *saveToFile)
+		}
 	}()
 
 	// P1: UCB1

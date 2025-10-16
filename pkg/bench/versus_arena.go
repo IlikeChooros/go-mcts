@@ -66,11 +66,11 @@ type VersusWorkerInfo[T mcts.MoveLike] struct {
 }
 
 type VersusSummaryInfo struct {
-	TotalGames int
-	P1Wins     int
-	P2Wins     int
-	Draws      int
-	Workers    int
+	TotalGames int `json:"total_games"`
+	P1Wins     int `json:"player1_wins"`
+	P2Wins     int `json:"player2_wins"`
+	Draws      int `json:"draws"`
+	Workers    int `json:"workers"`
 }
 
 type ExtMCTS[T mcts.MoveLike, S mcts.NodeStatsLike[S], R mcts.GameResult, P PositionLike[T, P]] interface {
@@ -159,6 +159,16 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 		p1.SetLimits(va.Limits)
 		p2.SetLimits(va.Limits)
 		go va.worker(int(i), int(nGames)+delta, l, p1, p2)
+	}
+}
+
+func (va *VersusArena[T, P, S1, R1, S2, R2]) Results() VersusSummaryInfo {
+	return VersusSummaryInfo{
+		TotalGames: va.Total(),
+		P1Wins:     va.P1Wins(),
+		P2Wins:     va.P2Wins(),
+		Draws:      va.Draws(),
+		Workers:    int(va.NThreads),
 	}
 }
 

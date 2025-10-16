@@ -174,17 +174,6 @@ func (r RAVE[T, S, R, O]) Select(parent, root *NodeBase[T, S]) *NodeBase[T, S] {
 }
 
 func (b RAVE[T, S, R, O]) Backpropagate(ops O, node *NodeBase[T, S], result R) {
-	/*
-		source: https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
-			If white loses the simulation, all nodes along the selection incremented their simulation count (the denominator),
-			but among them only the black nodes were credited with wins (the numerator). If instead white wins,
-			all nodes along the selection would still increment their simulation count, but among them
-			only the white nodes would be credited with wins. In games where draws are possible,
-			a draw causes the numerator for both black and white to be incremented by 0.5 and the denominator by 1.
-			This ensures that during selection, each player's choices expand towards the most promising moves for that player,
-			which mirrors the goal of each player to maximize the value of their move.
-	*/
-
 	v := result.Value()
 
 	for node != nil {
