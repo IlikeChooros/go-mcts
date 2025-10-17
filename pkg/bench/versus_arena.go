@@ -33,9 +33,11 @@ type PositionLike[T mcts.MoveLike, P any] interface {
 }
 
 type VersusArenaStats struct {
-	p1Wins uint32
-	p2Wins uint32
-	draws  uint32
+	p1Wins           uint32
+	p2Wins           uint32
+	draws            uint32
+	firstToMoveWins  uint32
+	secondToMoveWins uint32
 }
 
 func (vas *VersusArenaStats) Total() int {
@@ -54,23 +56,39 @@ func (vas *VersusArenaStats) Draws() int {
 	return int(atomic.LoadUint32(&vas.draws))
 }
 
+func (vas *VersusArenaStats) FirstToMoveWins() int {
+	return int(atomic.LoadUint32(&vas.firstToMoveWins))
+}
+
+func (vas *VersusArenaStats) SecondToMoveWins() int {
+	return int(atomic.LoadUint32(&vas.secondToMoveWins))
+}
+
 type VersusWorkerInfo[T mcts.MoveLike] struct {
-	WorkerID      int
-	NGames        int
-	FinishedGames int
-	GameMoveNum   int
-	Moves         []T
-	P1Wins        int
-	P2Wins        int
-	Draws         int
+	WorkerID         int
+	NGames           int
+	FinishedGames    int
+	GameMoveNum      int
+	Moves            []T
+	P1Wins           int
+	P2Wins           int
+	Draws            int
+	FirstToMoveWins  int
+	SecondToMoveWins int
+	P1Name           string
+	P2Name           string
 }
 
 type VersusSummaryInfo struct {
-	TotalGames int `json:"total_games"`
-	P1Wins     int `json:"player1_wins"`
-	P2Wins     int `json:"player2_wins"`
-	Draws      int `json:"draws"`
-	Workers    int `json:"workers"`
+	TotalGames       int    `json:"total_games"`
+	P1Wins           int    `json:"player1_wins"`
+	P2Wins           int    `json:"player2_wins"`
+	FirstToMoveWins  int    `json:"first_to_move_wins"`
+	SecondToMoveWins int    `json:"second_to_move_wins"`
+	Draws            int    `json:"draws"`
+	Workers          int    `json:"workers"`
+	P1Name           string `json:"player1_name"`
+	P2Name           string `json:"player2_name"`
 }
 
 type ExtMCTS[T mcts.MoveLike, S mcts.NodeStatsLike[S], R mcts.GameResult, P PositionLike[T, P]] interface {
@@ -90,6 +108,8 @@ type VersusArena[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1
 	NThreads uint
 	Limits   *mcts.Limits
 	Position P
+	p1name   string
+	p2name   string
 	wg       sync.WaitGroup
 	finished atomic.Bool
 	ctx      context.Context
@@ -133,7 +153,7 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) Wait() {
 	}
 }
 
-func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
+func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(p1name, p2name string, listener ListenerLike[T]) {
 	// Start equally distributed work between worker threads
 	va.finished.Store(false)
 	listener.OnStart()
@@ -142,13 +162,16 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 	if va.NThreads > 1 {
 		rest = va.NGames % va.NThreads
 	}
+	va.p1name = p1name
+	va.p2name = p2name
+	va.wg.Add(int(va.NThreads))
+
 	for i := range va.NThreads {
 		delta := 0
 		if rest > 0 {
 			delta = 1
 			rest--
 		}
-		va.wg.Add(1)
 
 		// Always use a clone, to avoid race conditions when cloning
 		p1 := va.Player1.Clone()
@@ -164,28 +187,32 @@ func (va *VersusArena[T, P, S1, R1, S2, R2]) Start(listener ListenerLike[T]) {
 
 func (va *VersusArena[T, P, S1, R1, S2, R2]) Results() VersusSummaryInfo {
 	return VersusSummaryInfo{
-		TotalGames: va.Total(),
-		P1Wins:     va.P1Wins(),
-		P2Wins:     va.P2Wins(),
-		Draws:      va.Draws(),
-		Workers:    int(va.NThreads),
+		TotalGames:       va.Total(),
+		P1Wins:           va.P1Wins(),
+		P2Wins:           va.P2Wins(),
+		Draws:            va.Draws(),
+		Workers:          int(va.NThreads),
+		P1Name:           va.p1name,
+		P2Name:           va.p2name,
+		FirstToMoveWins:  int(va.firstToMoveWins),
+		SecondToMoveWins: int(va.secondToMoveWins),
 	}
 }
 
 func (va *VersusArena[T, P, S1, R1, S2, R2]) worker(id, nGames int, listener ListenerLike[T], p1 ExtMCTS[T, S1, R1, P], p2 ExtMCTS[T, S2, R2, P]) {
-	r := rand.New(rand.NewSource(time.Now().Unix()))
+	r := rand.New(rand.NewSource(time.Now().Unix() + int64(id)*1000 + rand.Int63()))
 	var result VersusMatchResult
-	var switched bool
 	localStats := VersusArenaStats{}
 	gamePos := va.Position.Clone()
+	var switched bool
 
 Loop:
 	for i := range nGames {
 		if r.Int()%2 == 0 {
-			result = playGame(p1, p2, gamePos, listener, id, nGames, i, &localStats, va.ctx)
+			result = playGame(p1, p2, gamePos, listener, id, nGames, i, &localStats, va.ctx, va.p1name, va.p2name, false)
 			switched = false
 		} else {
-			result = playGame(p2, p1, gamePos, listener, id, nGames, i, &localStats, va.ctx)
+			result = playGame(p2, p1, gamePos, listener, id, nGames, i, &localStats, va.ctx, va.p2name, va.p1name, true)
 			switched = true
 		}
 
@@ -196,17 +223,26 @@ Loop:
 			// continue
 		}
 
-		if result == VersusDraw {
+		if result != VersusDraw {
+			if (switched && result == VersusPl2Win) || (!switched && result == VersusPl1Win) {
+				atomic.AddUint32(&va.firstToMoveWins, 1)
+				localStats.firstToMoveWins++
+			} else {
+				atomic.AddUint32(&va.secondToMoveWins, 1)
+				localStats.secondToMoveWins++
+			}
+		}
+
+		switch result {
+		case VersusPl1Win:
+			atomic.AddUint32(&va.p1Wins, 1)
+			localStats.p1Wins++
+		case VersusPl2Win:
+			atomic.AddUint32(&va.p2Wins, 1)
+			localStats.p2Wins++
+		case VersusDraw:
 			atomic.AddUint32(&va.draws, 1)
 			localStats.draws++
-		} else {
-			if ((result == VersusPl1Win) && !switched) || ((result == VersusPl2Win) && switched) {
-				atomic.AddUint32(&va.p1Wins, 1)
-				localStats.p1Wins++
-			} else {
-				atomic.AddUint32(&va.p2Wins, 1)
-				localStats.p2Wins++
-			}
 		}
 	}
 
@@ -218,16 +254,22 @@ Loop:
 		P1Wins:        int(localStats.p1Wins),
 		P2Wins:        int(localStats.p2Wins),
 		Draws:         int(localStats.draws),
+		P1Name:        va.p1name,
+		P2Name:        va.p2name,
 	})
 
 	if listener != nil && id == 0 {
 		va.wg.Wait()
 		listener.Summary(VersusSummaryInfo{
-			P1Wins:     va.P1Wins(),
-			P2Wins:     va.P2Wins(),
-			Draws:      va.Draws(),
-			Workers:    int(va.NThreads),
-			TotalGames: va.Total(),
+			P1Wins:           va.P1Wins(),
+			P2Wins:           va.P2Wins(),
+			Draws:            va.Draws(),
+			Workers:          int(va.NThreads),
+			TotalGames:       va.Total(),
+			FirstToMoveWins:  int(va.firstToMoveWins),
+			SecondToMoveWins: int(va.secondToMoveWins),
+			P1Name:           va.p1name,
+			P2Name:           va.p2name,
 		})
 		listener.OnEnd()
 		va.finished.Store(true)
@@ -238,21 +280,30 @@ func playGame[T mcts.MoveLike, P PositionLike[T, P], S1 mcts.NodeStatsLike[S1],
 	R1 mcts.GameResult, S2 mcts.NodeStatsLike[S2], R2 mcts.GameResult](
 	pl1 ExtMCTS[T, S1, R1, P], pl2 ExtMCTS[T, S2, R2, P], gamePos P,
 	listener ListenerLike[T], workerId, nGames, finishedGames int,
-	versusStats *VersusArenaStats, ctx context.Context,
+	versusStats *VersusArenaStats, ctx context.Context, p1name, p2name string,
+	switched bool,
 ) VersusMatchResult {
 	moves := make([]T, 0, 100)
+
+	if switched {
+		p1name, p2name = p2name, p1name
+	}
 
 	if listener != nil {
 		listener.OnGameStart()
 		defer listener.OnFinishedGame(VersusWorkerInfo[T]{
-			WorkerID:      workerId,
-			Moves:         moves,
-			GameMoveNum:   len(moves),
-			NGames:        nGames,
-			FinishedGames: finishedGames,
-			P1Wins:        versusStats.P1Wins(),
-			P2Wins:        versusStats.P2Wins(),
-			Draws:         versusStats.Draws(),
+			WorkerID:         workerId,
+			Moves:            moves,
+			GameMoveNum:      len(moves),
+			NGames:           nGames,
+			FinishedGames:    finishedGames,
+			P1Wins:           versusStats.P1Wins(),
+			P2Wins:           versusStats.P2Wins(),
+			Draws:            versusStats.Draws(),
+			FirstToMoveWins:  int(versusStats.FirstToMoveWins()),
+			SecondToMoveWins: int(versusStats.SecondToMoveWins()),
+			P1Name:           p1name,
+			P2Name:           p2name,
 		})
 	}
 
@@ -292,6 +343,8 @@ Loop:
 				P1Wins:        versusStats.P1Wins(),
 				P2Wins:        versusStats.P2Wins(),
 				Draws:         versusStats.Draws(),
+				P1Name:        p1name,
+				P2Name:        p2name,
 			})
 		}
 
@@ -327,6 +380,8 @@ Loop:
 				P1Wins:        versusStats.P1Wins(),
 				P2Wins:        versusStats.P2Wins(),
 				Draws:         versusStats.Draws(),
+				P1Name:        p1name,
+				P2Name:        p2name,
 			})
 		}
 
@@ -336,7 +391,8 @@ Loop:
 	}
 
 	if !gamePos.IsDraw() {
-		if gameEndedByPl1 {
+		// Return global winner, not the first-to-move winner
+		if (gameEndedByPl1 && !switched) || (!gameEndedByPl1 && switched) {
 			result = VersusPl1Win
 		} else {
 			result = VersusPl2Win

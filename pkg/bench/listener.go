@@ -62,17 +62,19 @@ func (d DefaultListener[T]) print(stats VersusWorkerInfo[T]) {
 		eta = termenv.String(time.Duration(v).Round(time.Second).String()).Foreground(termenv.ANSIWhite).Italic()
 	}
 
-	worker := termenv.String(fmt.Sprintf("Worker %d", stats.WorkerID)).Foreground(termenv.ANSIColor(33)).Bold()
+	worker := termenv.String(fmt.Sprintf("Worker %2d", stats.WorkerID)).Foreground(termenv.ANSIColor(33)).Bold()
 
 	ratios := "|"
 	if stats.FinishedGames > 0 {
-		ratios = fmt.Sprintf("| P1: %6.2f%% | P2: %6.2f%% | Draw: %6.2f%% |",
+		ratios = fmt.Sprintf("| %s: %6.2f%% | %s: %6.2f%% | Draw: %6.2f%% |",
+			stats.P1Name,
 			float64(stats.P1Wins)/float64(stats.FinishedGames)*100,
+			stats.P2Name,
 			float64(stats.P2Wins)/float64(stats.FinishedGames)*100,
 			float64(stats.Draws)/float64(stats.FinishedGames)*100)
 	}
 
-	statsLine := termenv.String(fmt.Sprintf("| status %s | games %d/%d | movenum %d %s eta: %s ",
+	statsLine := termenv.String(fmt.Sprintf("| status %s | games %4d/%d | movenum %3d %s eta: %s ",
 		_ListenerStatusOnGoing.String(), stats.FinishedGames, stats.NGames, stats.GameMoveNum, ratios, eta.String()))
 
 	out := termenv.DefaultOutput()
@@ -114,8 +116,8 @@ func (d *DefaultListener[T]) Summary(summary VersusSummaryInfo) {
 	drawRate := float64(summary.Draws) / float64(total) * 100
 
 	out.WriteString(fmt.Sprintf("Total games: %d\n", total))
-	out.WriteString(fmt.Sprintf("Player 1 wins: %d (%.2f%%)\n", summary.P1Wins, p1WinRate))
-	out.WriteString(fmt.Sprintf("Player 2 wins: %d (%.2f%%)\n", summary.P2Wins, p2WinRate))
+	out.WriteString(fmt.Sprintf("%s: %d (%.2f%%)\n", summary.P1Name, summary.P1Wins, p1WinRate))
+	out.WriteString(fmt.Sprintf("%s: %d (%.2f%%)\n", summary.P2Name, summary.P2Wins, p2WinRate))
 	out.WriteString(fmt.Sprintf("Draws: %d (%.2f%%)\n", summary.Draws, drawRate))
 	out.WriteString("=====================================\n")
 }

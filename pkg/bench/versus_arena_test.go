@@ -169,7 +169,7 @@ func TestBasicListeners(t *testing.T) {
 	arena := NewVersusArena(NewDummyPos(), t1, t2)
 
 	arena.Setup(mcts.DefaultLimits().SetCycles(1000), 5, 4)
-	arena.Start(&DefaultListener[Move]{})
+	arena.Start("test1", "test2", &DefaultListener[Move]{})
 
 	arena.Wait()
 }

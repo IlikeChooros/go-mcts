@@ -75,9 +75,9 @@ func (u *ucbMCTS) SetPosition(position *uttt.Position) {
 }
 
 func (u *ucbMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *uttt.Position] {
-	newMCTS := NewUcb()
-	newMCTS.Limiter.SetLimits(u.Limiter.Limits())
-	return newMCTS
+	return &ucbMCTS{baseMCTS: baseMCTS[*mcts.NodeStats, mcts.Result, *ucb.UtttOperations, *mcts.UCB1[uttt.PosType, *mcts.NodeStats, mcts.Result, *ucb.UtttOperations]]{
+		MCTS: *u.MCTS.Clone(),
+	}}
 }
 
 func NewRave() *raveMCTS {
@@ -104,9 +104,9 @@ func (r *raveMCTS) SetPosition(position *uttt.Position) {
 }
 
 func (r *raveMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position] {
-	newMCTS := NewRave()
-	newMCTS.Limiter.SetLimits(r.Limiter.Limits())
-	return newMCTS
+	return &raveMCTS{baseMCTS: baseMCTS[*mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations, *mcts.RAVE[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *rave.UtttOperations]]{
+		MCTS: *r.MCTS.Clone(),
+	}}
 }
 
 type versusData struct {
@@ -120,11 +120,11 @@ func main() {
 	flag.Parse()
 
 	const (
-		maxThreads = 4     // threads per mcts instance (total threads = maxThreads * arenaThreads)
+		maxThreads = 1     // threads per mcts instance (total threads = maxThreads * arenaThreads)
 		totalGames = 500   // total games to play
 		maxCycles  = 50000 // cycles/iterations per mcts instance
 
-		arenaThreads = 3 // threads for the arena manager
+		arenaThreads = 12 // threads for the arena manager
 	)
 
 	ucbmcts := NewUcb()
@@ -134,23 +134,29 @@ func main() {
 	ucbmcts.Strategy().SetExplorationParam(0.4)
 
 	// Fine tune RAVE parameters
-	// const alpha = 0.45
-	const K = 20000
+	const (
+		K      = 10000
+		alpha  = 0.2
+		P1Name = "UCB1"
+		P2Name = "RAVE"
+	)
+	// const K = 30000
 	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
 		// Using an example from: https://users.soe.ucsc.edu/~dph/mypubs/AMAFpaperWithRef.pdf
-		if n > K {
-			return 0.0
-		}
-		return float64(K-n) / K
-		// return alpha // alpha AMAF
+		// if n > K {
+		// return 0.0
+		// }
+		// return float64(K-n) / K
+		return alpha // alpha AMAF
 	})
 	ravemcts.Strategy().SetExplorationParam(0.4)
 
 	// Setup and run the arena
 	limits := mcts.DefaultLimits().SetThreads(maxThreads).SetCycles(maxCycles)
 	arena := bench.NewVersusArena(uttt.NewPosition(),
-		bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
+		// bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
 		bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *uttt.Position](ucbmcts),
+		bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
 	)
 	arena.Setup(limits, totalGames, arenaThreads)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -179,7 +185,8 @@ func main() {
 			data := versusData{
 				VersusSummaryInfo: arena.Results(),
 				ExploartionParam:  ravemcts.Strategy().ExplorationParam,
-				BetaFunction:      fmt.Sprintf("alpha k-n/k (k=%d)", K),
+				// BetaFunction:      fmt.Sprintf("K=%d k-n/k", K),
+				BetaFunction: fmt.Sprintf("alpha=%.2f", alpha),
 			}
 			jsonData, err := json.Marshal(data)
 			if err != nil {
@@ -196,6 +203,6 @@ func main() {
 
 	// P1: UCB1
 	// P2: RAVE
-	arena.Start(&bench.DefaultListener[uttt.PosType]{})
+	arena.Start(P1Name, P2Name, &bench.DefaultListener[uttt.PosType]{})
 	arena.Wait()
 }
