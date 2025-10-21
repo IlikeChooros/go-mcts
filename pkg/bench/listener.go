@@ -64,7 +64,7 @@ func (d DefaultListener[T]) print(stats VersusWorkerInfo[T]) {
 
 	worker := termenv.String(fmt.Sprintf("Worker %2d", stats.WorkerID)).Foreground(termenv.ANSIColor(33)).Bold()
 
-	ratios := "|"
+	var ratios string
 	if stats.FinishedGames > 0 {
 		ratios = fmt.Sprintf("| %s: %6.2f%% | %s: %6.2f%% | Draw: %6.2f%% |",
 			stats.P1Name,
@@ -72,10 +72,13 @@ func (d DefaultListener[T]) print(stats VersusWorkerInfo[T]) {
 			stats.P2Name,
 			float64(stats.P2Wins)/float64(stats.FinishedGames)*100,
 			float64(stats.Draws)/float64(stats.FinishedGames)*100)
+	} else {
+		ratios = fmt.Sprintf("| %s:      -%% | %s:      -%% | Draw:      -%% |",
+			stats.P1Name, stats.P2Name)
 	}
 
-	statsLine := termenv.String(fmt.Sprintf("| status %s | games %4d/%d | movenum %3d %s eta: %s ",
-		_ListenerStatusOnGoing.String(), stats.FinishedGames, stats.NGames, stats.GameMoveNum, ratios, eta.String()))
+	statsLine := termenv.String(fmt.Sprintf("| games %2d/%d | movenum %3d %s eta: %s ",
+		stats.FinishedGames, stats.NGames, stats.GameMoveNum, ratios, eta.String()))
 
 	out := termenv.DefaultOutput()
 	out.MoveCursor(d.row, 0)

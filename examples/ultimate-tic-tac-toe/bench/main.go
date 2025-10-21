@@ -6,6 +6,8 @@ Ultimate Tic-Tac-Toe benchmarking example
 
 Uses UCB1 and RAVE implementations to play against each other in an arena setup
 
+
+
 */
 
 import (
@@ -22,10 +24,6 @@ import (
 	"github.com/IlikeChooros/go-mcts/pkg/bench"
 	"github.com/IlikeChooros/go-mcts/pkg/mcts"
 )
-
-type Position struct {
-	uttt.Position
-}
 
 type utttOpsLike[S mcts.NodeStatsLike[S], R mcts.GameResult, G mcts.GameOperations[uttt.PosType, S, R, G]] interface {
 	mcts.GameOperations[uttt.PosType, S, R, G]
@@ -111,8 +109,9 @@ func (r *raveMCTS) Clone() bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.Ut
 
 type versusData struct {
 	bench.VersusSummaryInfo
-	ExploartionParam float64 `json:"exploration_param"`
-	BetaFunction     string  `json:"beta_function"`
+	P1Exp        float64 `json:"p1_exploration_param"`
+	P2Exp        float64 `json:"p2_exploration_param"`
+	BetaFunction string  `json:"beta_function"`
 }
 
 func main() {
@@ -136,25 +135,24 @@ func main() {
 	// Fine tune RAVE parameters
 	const (
 		K      = 10000
-		alpha  = 0.2
+		alpha  = 0.4
 		P1Name = "UCB1"
 		P2Name = "RAVE"
 	)
 	// const K = 30000
 	ravemcts.Strategy().SetBetaFunction(func(n, nRave int32) float64 {
 		// Using an example from: https://users.soe.ucsc.edu/~dph/mypubs/AMAFpaperWithRef.pdf
-		// if n > K {
-		// return 0.0
-		// }
-		// return float64(K-n) / K
-		return alpha // alpha AMAF
+		if n > K {
+			return 0.0
+		}
+		return float64(K-n) / K
+		// return alpha // alpha AMAF
 	})
-	ravemcts.Strategy().SetExplorationParam(0.4)
+	ravemcts.Strategy().SetExplorationParam(0.35)
 
 	// Setup and run the arena
 	limits := mcts.DefaultLimits().SetThreads(maxThreads).SetCycles(maxCycles)
 	arena := bench.NewVersusArena(uttt.NewPosition(),
-		// bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
 		bench.ExtMCTS[uttt.PosType, *mcts.NodeStats, mcts.Result, *uttt.Position](ucbmcts),
 		bench.ExtMCTS[uttt.PosType, *mcts.RaveStats, *rave.UtttGameResult, *uttt.Position](ravemcts),
 	)
@@ -184,9 +182,10 @@ func main() {
 			defer f.Close()
 			data := versusData{
 				VersusSummaryInfo: arena.Results(),
-				ExploartionParam:  ravemcts.Strategy().ExplorationParam,
-				// BetaFunction:      fmt.Sprintf("K=%d k-n/k", K),
-				BetaFunction: fmt.Sprintf("alpha=%.2f", alpha),
+				P1Exp:             ucbmcts.Strategy().ExplorationParam,
+				P2Exp:             ravemcts.Strategy().ExplorationParam,
+				BetaFunction:      fmt.Sprintf("K=%d k-n/k", K),
+				// BetaFunction: fmt.Sprintf("alpha=%.2f", alpha),
 			}
 			jsonData, err := json.Marshal(data)
 			if err != nil {
